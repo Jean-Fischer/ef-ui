@@ -162,6 +162,14 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         updatedHtml.Should().NotContain(email);
     }
 
+    [Fact]
+    public async Task Post_delete_missing_row_returns_not_found()
+    {
+        var response = await _client.PostAsync("/efui/users/999999/delete", new FormUrlEncodedContent(new Dictionary<string, string>()));
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
     private async Task<string> CreateUserAndGetIdAsync(string name, string email)
     {
         var createResponse = await _client.PostAsync("/efui/users", new FormUrlEncodedContent(new Dictionary<string, string>

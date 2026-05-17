@@ -153,7 +153,12 @@ public static class EfUiApplicationBuilderExtensions
             var result = await crudService.DeleteAsync(dbContext, entity, key);
             if (!result.IsSuccess)
             {
-                return Results.NotFound();
+                if (result.Errors.TryGetValue("id", out var idErrors) && idErrors.Contains("Row not found."))
+                {
+                    return Results.NotFound();
+                }
+
+                return Results.BadRequest(result.Errors);
             }
 
             var html = renderer.RenderList(options.RoutePrefix, metadata, ReadRows(dbContext, metadata.ClrType));
