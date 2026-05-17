@@ -157,14 +157,57 @@ public class HtmlPageRendererTests
                 ]
             });
 
-        html.Should().Contain("<select name=\"Group\"");
+        html.Should().Contain("<select class=\"efui-select\" name=\"Group\"");
         html.Should().Contain("<option value=\"1\">Admins</option>");
         html.Should().Contain("<option value=\"2\" selected>Guests</option>");
         html.Should().NotContain("name=\"GroupId\"");
     }
 
     [Fact]
-    public void RenderEditForm_renders_collection_fields_as_filterable_checkbox_picker()
+    public void RenderEditForm_includes_form_theme_stylesheet_and_semantic_classes()
+    {
+        var sut = new HtmlPageRenderer();
+        var metadata = new EntityMetadata(
+            "User",
+            "users",
+            typeof(UserRow),
+            PrimaryKey("Id", typeof(int)),
+            new[]
+            {
+                PrimaryKey("Id", typeof(int)),
+                Editable("Name", typeof(string))
+            },
+            new[]
+            {
+                Editable("Name", typeof(string))
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string))
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string))
+            });
+
+        var html = sut.RenderEditForm(
+            "/efui",
+            metadata,
+            new UserRow { Id = 7, Name = "Ada" },
+            isCreate: false,
+            errors: new Dictionary<string, string[]>(),
+            key: 7);
+
+        html.Should().Contain("href=\"/efui/assets/efui.css\"");
+        html.Should().Contain("class=\"efui-form\"");
+        html.Should().Contain("class=\"efui-field\"");
+        html.Should().Contain("class=\"efui-label\"");
+        html.Should().Contain("class=\"efui-input\"");
+        html.Should().Contain("class=\"efui-button\"");
+    }
+
+    [Fact]
+    public void RenderEditForm_renders_collection_fields_as_chip_picker()
     {
         var sut = new HtmlPageRenderer();
         var metadata = new EntityMetadata(
@@ -207,12 +250,19 @@ public class HtmlPageRendererTests
                 ]
             });
 
-        html.Should().Contain("type=\"search\"");
+        html.Should().Contain("efui-chip-picker");
+        html.Should().Contain("efui-chip-picker-selected");
+        html.Should().Contain("efui-chip-picker-results");
+        html.Should().Contain("efui-chip-picker-fallback");
+        html.Should().Contain("data-role=\"chip-picker\"");
+        html.Should().Contain("data-role=\"chip-picker-search\"");
+        html.Should().Contain("data-role=\"chip-picker-results\"");
+        html.Should().Contain("data-role=\"chip-picker-hidden-inputs\"");
+        html.Should().Contain("document.addEventListener('DOMContentLoaded'");
         html.Should().Contain("name=\"Tracks\" type=\"checkbox\" value=\"1\" checked");
         html.Should().Contain("name=\"Tracks\" type=\"checkbox\" value=\"2\"");
         html.Should().Contain(">Track A<");
         html.Should().Contain(">Track B<");
-        html.Should().Contain("efui-collection-picker");
         html.Should().NotContain("<select name=\"Tracks\" multiple>");
     }
 

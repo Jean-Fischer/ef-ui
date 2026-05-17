@@ -30,6 +30,9 @@ public static class EfUiApplicationBuilderExtensions
 
     private static void MapEfUiRoutes(WebApplication app, EfUiOptions options)
     {
+        app.MapGet($"{options.RoutePrefix}/assets/efui.css", ()
+            => Results.Text(EfUiFormCss.Content, "text/css"));
+
         app.MapGet(options.RoutePrefix, (IServiceProvider services)
             => RenderIndex(options, services));
 

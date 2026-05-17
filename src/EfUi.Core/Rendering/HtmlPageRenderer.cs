@@ -68,15 +68,26 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             : $"{routePrefix}/{entity.RouteName}/{EscapeRouteSegment(key)}";
 
         var html = new StringBuilder();
-        html.Append("<html><body>");
-        html.Append($"<form method=\"post\" action=\"{action}\">");
+        html.Append("<html><head>");
+        html.Append("<meta charset=\"utf-8\" />");
+        html.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />");
+        html.Append($"<link rel=\"stylesheet\" href=\"{routePrefix}/assets/efui.css\" />");
+        html.Append("</head><body class=\"efui-body\"><main class=\"efui-form-page\">");
+        html.Append($"<form class=\"efui-form\" method=\"post\" action=\"{action}\">");
+        html.Append($"<h1 class=\"efui-form-title\">{WebUtility.HtmlEncode(entity.DisplayName)}</h1>");
 
-        foreach (var error in errors)
+        if (errors.Count > 0)
         {
-            foreach (var message in error.Value)
+            html.Append("<div class=\"efui-error-summary\">");
+            foreach (var error in errors)
             {
-                html.Append($"<div>{WebUtility.HtmlEncode(message)}</div>");
+                foreach (var message in error.Value)
+                {
+                    html.Append($"<div class=\"efui-error\">{WebUtility.HtmlEncode(message)}</div>");
+                }
             }
+
+            html.Append("</div>");
         }
 
         if (!isCreate)
@@ -85,14 +96,18 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
                 ? FormatValue(key)
                 : FormatValue(model.GetType().GetProperty(entity.PrimaryKeyProperty.Name)?.GetValue(model));
 
-            html.Append($"<div><label>{WebUtility.HtmlEncode(entity.PrimaryKeyProperty.Name)}</label><span>{WebUtility.HtmlEncode(keyValue)}</span></div>");
+            html.Append("<div class=\"efui-field\">");
+            html.Append($"<label class=\"efui-label\">{WebUtility.HtmlEncode(entity.PrimaryKeyProperty.Name)}</label>");
+            html.Append($"<span class=\"efui-readonly-value\">{WebUtility.HtmlEncode(keyValue)}</span>");
+            html.Append("</div>");
         }
 
         var editableFields = isCreate ? entity.CreateEditableFields : entity.UpdateEditableFields;
 
         foreach (var field in editableFields)
         {
-            html.Append($"<label>{WebUtility.HtmlEncode(field.Name)}</label>");
+            html.Append("<div class=\"efui-field\">");
+            html.Append($"<label class=\"efui-label\">{WebUtility.HtmlEncode(field.Name)}</label>");
 
             switch (field.Kind)
             {
@@ -106,6 +121,8 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
                     RenderScalarField(html, field, model, submittedValues);
                     break;
             }
+
+            html.Append("</div>");
         }
 
         if (editableFields.Any(field => field.Kind == EditableFieldKind.Collection))
@@ -118,8 +135,8 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             RenderRelatedManagementLinks(html, routePrefix, entity);
         }
 
-        html.Append("<button type=\"submit\">Save</button></form>");
-        html.Append("</body></html>");
+        html.Append("<button class=\"efui-button\" type=\"submit\">Save</button></form>");
+        html.Append("</main></body></html>");
         return html.ToString();
     }
 
@@ -138,7 +155,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
                 : FormatValue(model.GetType().GetProperty(propertyName)?.GetValue(model));
         }
 
-        html.Append($"<input name=\"{field.Name}\" value=\"{WebUtility.HtmlEncode(value)}\" />");
+        html.Append($"<input class=\"efui-input\" name=\"{field.Name}\" value=\"{WebUtility.HtmlEncode(value)}\" />");
     }
 
     private static void RenderReferenceField(StringBuilder html, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string[]>? submittedValues, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions)
@@ -149,7 +166,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
                 ? string.Empty
                 : FormatValue(model.GetType().GetProperty(field.ScalarPropertyName!)?.GetValue(model));
 
-        html.Append($"<select name=\"{field.Name}\">");
+        html.Append($"<select class=\"efui-select\" name=\"{field.Name}\">");
         html.Append("<option value=\"\"></option>");
 
         if (fieldOptions is not null && fieldOptions.TryGetValue(field.Name, out var options))
@@ -169,9 +186,12 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     private static void RenderCollectionField(StringBuilder html, EditableFieldMetadata field, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions)
     {
         var fieldName = WebUtility.HtmlEncode(field.Name);
-        html.Append($"<div class=\"efui-collection-picker\" data-field-name=\"{fieldName}\">");
-        html.Append($"<input type=\"search\" class=\"efui-collection-picker-search\" data-role=\"collection-filter\" data-target-field=\"{fieldName}\" placeholder=\"Filter {fieldName}...\" />");
-        html.Append("<div class=\"efui-collection-picker-options\" style=\"max-height: 12rem; overflow-y: auto; border: 1px solid #ccc; padding: 0.5rem;\">");
+        html.Append($"<div class=\"efui-chip-picker\" data-role=\"chip-picker\" data-field-name=\"{fieldName}\">");
+        html.Append("<div class=\"efui-chip-picker-selected\" data-role=\"chip-picker-selected\"></div>");
+        html.Append($"<input type=\"search\" class=\"efui-input efui-search-input\" data-role=\"chip-picker-search\" placeholder=\"Search {fieldName}...\" />");
+        html.Append("<div class=\"efui-chip-picker-results\" data-role=\"chip-picker-results\"></div>");
+        html.Append("<div class=\"efui-chip-picker-hidden-inputs\" data-role=\"chip-picker-hidden-inputs\"></div>");
+        html.Append("<div class=\"efui-chip-picker-fallback\">");
 
         if (fieldOptions is not null && fieldOptions.TryGetValue(field.Name, out var options))
         {
@@ -181,12 +201,13 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
                 var disabled = option.Disabled ? " disabled" : string.Empty;
                 var encodedValue = WebUtility.HtmlEncode(option.Value);
                 var encodedLabel = WebUtility.HtmlEncode(option.Label);
+                var encodedDescription = WebUtility.HtmlEncode(option.Description ?? string.Empty);
                 var normalizedLabel = WebUtility.HtmlEncode(option.Label.ToLowerInvariant());
                 var description = string.IsNullOrWhiteSpace(option.Description)
                     ? string.Empty
-                    : $" <small>{WebUtility.HtmlEncode(option.Description)}</small>";
-                html.Append($"<label class=\"efui-collection-picker-option\" data-search-text=\"{normalizedLabel}\" style=\"display:block; margin-bottom:0.25rem;\">");
-                html.Append($"<input name=\"{fieldName}\" type=\"checkbox\" value=\"{encodedValue}\"{selected}{disabled} /> <span>{encodedLabel}</span>{description}");
+                    : $" <small class=\"efui-chip-picker-description\">{WebUtility.HtmlEncode(option.Description)}</small>";
+                html.Append($"<label class=\"efui-chip-picker-option\" data-search-text=\"{normalizedLabel}\">");
+                html.Append($"<input name=\"{fieldName}\" type=\"checkbox\" value=\"{encodedValue}\"{selected}{disabled} data-label=\"{encodedLabel}\" data-description=\"{encodedDescription}\" /> <span>{encodedLabel}</span>{description}");
                 html.Append("</label>");
             }
         }
@@ -196,10 +217,10 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
     private static void RenderRelatedManagementLinks(StringBuilder html, string routePrefix, EntityMetadata entity)
     {
-        html.Append("<section><h2>Related rows</h2>");
+        html.Append("<section class=\"efui-related-links\"><h2 class=\"efui-related-links-title\">Related rows</h2>");
         foreach (var link in entity.RelatedManagementLinks)
         {
-            html.Append($"<div><label>{WebUtility.HtmlEncode(link.Name)}</label> <a href=\"{routePrefix}/{link.RouteName}\">Manage related rows</a></div>");
+            html.Append($"<div class=\"efui-related-link\"><label class=\"efui-label\">{WebUtility.HtmlEncode(link.Name)}</label> <a class=\"efui-related-link-action\" href=\"{routePrefix}/{link.RouteName}\">Manage related rows</a></div>");
         }
 
         html.Append("</section>");
@@ -208,16 +229,26 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     private static void RenderCollectionPickerScript(StringBuilder html)
     {
         html.Append("<script>");
-        html.Append("document.addEventListener('input',function(event){");
-        html.Append("if(!(event.target instanceof HTMLInputElement)||event.target.dataset.role!=='collection-filter'){return;}");
-        html.Append("var query=event.target.value.toLowerCase();");
-        html.Append("var picker=event.target.closest('.efui-collection-picker');");
-        html.Append("if(!picker){return;}");
-        html.Append("picker.querySelectorAll('.efui-collection-picker-option').forEach(function(option){");
-        html.Append("var checkbox=option.querySelector('input[type=checkbox]');");
-        html.Append("if(!(checkbox instanceof HTMLInputElement)){return;}");
-        html.Append("var matches=(option.dataset.searchText||'').indexOf(query)!==-1;");
-        html.Append("option.style.display=checkbox.checked||matches?'block':'none';");
+        html.Append("document.addEventListener('DOMContentLoaded',function(){");
+        html.Append("document.querySelectorAll('[data-role=\"chip-picker\"]').forEach(function(picker){");
+        html.Append("if(!(picker instanceof HTMLElement)){return;}");
+        html.Append("var selectedHost=picker.querySelector('[data-role=\"chip-picker-selected\"]');");
+        html.Append("var searchInput=picker.querySelector('[data-role=\"chip-picker-search\"]');");
+        html.Append("var resultsHost=picker.querySelector('[data-role=\"chip-picker-results\"]');");
+        html.Append("var hiddenHost=picker.querySelector('[data-role=\"chip-picker-hidden-inputs\"]');");
+        html.Append("var fallbackHost=picker.querySelector('.efui-chip-picker-fallback');");
+        html.Append("if(!(selectedHost instanceof HTMLElement)||!(searchInput instanceof HTMLInputElement)||!(resultsHost instanceof HTMLElement)||!(hiddenHost instanceof HTMLElement)||!(fallbackHost instanceof HTMLElement)){return;}");
+        html.Append("var fieldName=picker.dataset.fieldName||'';");
+        html.Append("var options=Array.from(fallbackHost.querySelectorAll('input[type=checkbox]')).filter(function(input){return input instanceof HTMLInputElement;}).map(function(input){return {value:input.value,label:input.dataset.label||input.value,description:input.dataset.description||'',searchText:((input.dataset.label||input.value)+' '+(input.dataset.description||'')).toLowerCase(),selected:input.checked,disabled:input.disabled};});");
+        html.Append("function syncHiddenInputs(){hiddenHost.innerHTML='';options.filter(function(option){return option.selected;}).forEach(function(option){var input=document.createElement('input');input.type='hidden';input.name=fieldName;input.value=option.value;hiddenHost.appendChild(input);});}");
+        html.Append("function renderChips(){selectedHost.innerHTML='';selectedHost.className='efui-chip-list';var selected=options.filter(function(option){return option.selected;});if(selected.length===0){var empty=document.createElement('div');empty.className='efui-chip-picker-empty';empty.textContent='No items selected';selectedHost.appendChild(empty);return;}selected.forEach(function(option){var chip=document.createElement('span');chip.className='efui-chip';var label=document.createElement('span');label.textContent=option.label;chip.appendChild(label);if(!option.disabled){var remove=document.createElement('button');remove.type='button';remove.className='efui-chip-remove';remove.dataset.role='chip-remove';remove.dataset.value=option.value;remove.setAttribute('aria-label','Remove '+option.label);remove.textContent='×';chip.appendChild(remove);}selectedHost.appendChild(chip);});}");
+        html.Append("function renderResults(){resultsHost.innerHTML='';var query=searchInput.value.toLowerCase().trim();var available=options.filter(function(option){return !option.selected&&!option.disabled&&(!query||option.searchText.indexOf(query)!==-1);});if(available.length===0){var empty=document.createElement('div');empty.className='efui-chip-picker-empty';empty.textContent='No matching options';resultsHost.appendChild(empty);return;}available.forEach(function(option){var button=document.createElement('button');button.type='button';button.className='efui-chip-picker-result';button.dataset.role='chip-option';button.dataset.value=option.value;button.textContent=option.label;if(option.description){var description=document.createElement('small');description.className='efui-chip-picker-description';description.textContent=option.description;button.appendChild(document.createElement('br'));button.appendChild(description);}resultsHost.appendChild(button);});}");
+        html.Append("function rerender(){syncHiddenInputs();renderChips();renderResults();}");
+        html.Append("picker.addEventListener('click',function(event){var target=event.target;if(!(target instanceof HTMLElement)){return;}var remove=target.closest('[data-role=\"chip-remove\"]');if(remove instanceof HTMLElement){var value=remove.dataset.value||'';options.forEach(function(option){if(option.value===value&&!option.disabled){option.selected=false;}});rerender();return;}var add=target.closest('[data-role=\"chip-option\"]');if(add instanceof HTMLElement){var value=add.dataset.value||'';options.forEach(function(option){if(option.value===value&&!option.disabled){option.selected=true;}});searchInput.focus();rerender();}});");
+        html.Append("searchInput.addEventListener('input',renderResults);");
+        html.Append("Array.from(fallbackHost.querySelectorAll('input[type=checkbox]')).forEach(function(input){if(input instanceof HTMLInputElement){input.disabled=true;}});");
+        html.Append("picker.classList.add('efui-chip-picker-enhanced');");
+        html.Append("rerender();");
         html.Append("});");
         html.Append("});");
         html.Append("</script>");

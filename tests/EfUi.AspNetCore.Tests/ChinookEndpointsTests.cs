@@ -35,15 +35,24 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     }
 
     [Fact]
-    public async Task Get_playlist_edit_form_renders_filterable_tracks_checkbox_picker()
+    public async Task Get_playlist_edit_form_renders_tracks_chip_picker_shell()
     {
         var html = await _client.GetStringAsync("/chinook/playlists/1/edit");
 
-        html.Should().Contain("type=\"search\"");
-        html.Should().Contain("efui-collection-picker");
+        html.Should().Contain("efui-chip-picker");
+        html.Should().Contain("efui-chip-picker-fallback");
+        html.Should().Contain("data-role=\"chip-picker-search\"");
         html.Should().Contain("name=\"Tracks\" type=\"checkbox\"");
         html.Should().Contain("Track");
         html.Should().NotContain("<select name=\"Tracks\" multiple>");
+    }
+
+    [Fact]
+    public async Task Get_playlist_edit_form_links_local_form_stylesheet()
+    {
+        var html = await _client.GetStringAsync("/chinook/playlists/1/edit");
+
+        html.Should().Contain("href=\"/chinook/assets/efui.css\"");
     }
 
     [Fact]
