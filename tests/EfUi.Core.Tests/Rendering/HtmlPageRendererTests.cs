@@ -217,6 +217,99 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
+    public void RenderEditForm_renders_one_to_many_picker_with_disabled_assigned_elsewhere_options()
+    {
+        var sut = new HtmlPageRenderer();
+        var metadata = new EntityMetadata(
+            "Group",
+            "groups",
+            typeof(TenantRow),
+            PrimaryKey("Id", typeof(int)),
+            new[]
+            {
+                PrimaryKey("Id", typeof(int)),
+                Editable("Name", typeof(string))
+            },
+            new[]
+            {
+                Editable("Name", typeof(string))
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string))
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string)),
+                CollectionField("Users", typeof(TenantRow), CollectionRelationshipKind.OneToMany)
+            });
+
+        var html = sut.RenderEditForm(
+            "/efui",
+            metadata,
+            new GroupRow { Id = 1, Name = "Admins" },
+            isCreate: false,
+            errors: new Dictionary<string, string[]>(),
+            key: 1,
+            fieldOptions: new Dictionary<string, IReadOnlyList<RelatedEntityOption>>
+            {
+                ["Users"] =
+                [
+                    new RelatedEntityOption("1", "Ada", Selected: true),
+                    new RelatedEntityOption("2", "Linus", Selected: false, Disabled: true, Description: "assigned to Guests")
+                ]
+            });
+
+        html.Should().Contain("name=\"Users\" type=\"checkbox\" value=\"1\" checked");
+        html.Should().Contain("name=\"Users\" type=\"checkbox\" value=\"2\" disabled");
+        html.Should().Contain("assigned to Guests");
+    }
+
+    [Fact]
+    public void RenderEditForm_renders_related_management_links_below_editable_fields()
+    {
+        var sut = new HtmlPageRenderer();
+        var metadata = new EntityMetadata(
+            "Invoice",
+            "invoices",
+            typeof(TenantRow),
+            PrimaryKey("Id", typeof(int)),
+            new[]
+            {
+                PrimaryKey("Id", typeof(int)),
+                Editable("Name", typeof(string))
+            },
+            new[]
+            {
+                Editable("Name", typeof(string))
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string))
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string))
+            },
+            relatedManagementLinks:
+            [
+                new RelatedEntityManagementLink("InvoiceItems", "invoice_items", typeof(TenantRow))
+            ]);
+
+        var html = sut.RenderEditForm(
+            "/efui",
+            metadata,
+            new GroupRow { Id = 1, Name = "Invoice 1" },
+            isCreate: false,
+            errors: new Dictionary<string, string[]>(),
+            key: 1);
+
+        html.Should().Contain("Manage related rows");
+        html.Should().Contain("/efui/invoice_items");
+        html.Should().NotContain("name=\"InvoiceItems\" type=\"checkbox\"");
+    }
+
+    [Fact]
     public void RenderEditForm_prefers_submitted_values_over_model_values()
     {
         var sut = new HtmlPageRenderer();
@@ -333,8 +426,8 @@ public class HtmlPageRendererTests
     private static EditableFieldMetadata ReferenceField(string name, Type clrType, Type relatedClrType, bool isRequired)
         => new(name, EditableFieldKind.Reference, clrType, $"{name}Id", name, relatedClrType, isRequired);
 
-    private static EditableFieldMetadata CollectionField(string name, Type relatedClrType)
-        => new(name, EditableFieldKind.Collection, typeof(string[]), null, name, relatedClrType, false);
+    private static EditableFieldMetadata CollectionField(string name, Type relatedClrType, CollectionRelationshipKind relationshipKind = CollectionRelationshipKind.ManyToMany)
+        => new(name, EditableFieldKind.Collection, typeof(string[]), null, name, relatedClrType, false, relationshipKind);
 
     private sealed class UserRow
     {
@@ -349,6 +442,12 @@ public class HtmlPageRendererTests
     {
         public string TenantKey { get; init; } = string.Empty;
         public int GroupId { get; init; }
+        public string Name { get; init; } = string.Empty;
+    }
+
+    private sealed class GroupRow
+    {
+        public int Id { get; init; }
         public string Name { get; init; } = string.Empty;
     }
 }

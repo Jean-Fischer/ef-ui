@@ -105,15 +105,47 @@ public class EntityMetadataProviderTests
     }
 
     [Fact]
-    public void GetEntity_exposes_supported_skip_navigation_as_collection_field()
+    public void GetEntity_exposes_principal_one_to_many_as_update_only_collection_field()
+    {
+        using var db = CreateDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var group = sut.GetEntity(db, "groups");
+        var users = group.UpdateEditableFields.Single(x => x.Name == "Users");
+
+        users.Kind.Should().Be(EditableFieldKind.Collection);
+        users.CollectionRelationshipKind.Should().Be(CollectionRelationshipKind.OneToMany);
+        users.ScalarPropertyName.Should().Be("GroupId");
+        users.NavigationPropertyName.Should().Be("Users");
+        users.RelatedClrType.Should().Be(typeof(User));
+        users.IsRequired.Should().BeFalse();
+
+        group.CreateEditableFields.Select(x => x.Name).Should().NotContain("Users");
+    }
+
+    [Fact]
+    public void GetEntity_keeps_skip_navigation_as_many_to_many_collection_field()
     {
         using var db = CreateManyToManyDb();
         var sut = new EfEntityMetadataProvider();
 
         var playlist = sut.GetEntity(db, "playlists");
+        var tracks = playlist.UpdateEditableFields.Single(x => x.Name == "Tracks");
 
-        playlist.UpdateEditableFields.Select(x => x.Name).Should().Contain("Tracks");
-        playlist.UpdateEditableFields.Single(x => x.Name == "Tracks").Kind.Should().Be(EditableFieldKind.Collection);
+        tracks.Kind.Should().Be(EditableFieldKind.Collection);
+        tracks.CollectionRelationshipKind.Should().Be(CollectionRelationshipKind.ManyToMany);
+    }
+
+    [Fact]
+    public void GetEntity_exposes_payload_join_collection_as_management_link()
+    {
+        using var db = CreatePayloadJoinDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var order = sut.GetEntity(db, "orders");
+
+        order.UpdateEditableFields.Select(x => x.Name).Should().NotContain("OrderLines");
+        order.RelatedManagementLinks.Should().ContainSingle(x => x.Name == "OrderLines" && x.RouteName == "order_lines");
     }
 
     [Fact]
@@ -200,6 +232,18 @@ public class EntityMetadataProviderTests
         return db;
     }
 
+    private static PayloadJoinDbContext CreatePayloadJoinDb()
+    {
+        var options = new DbContextOptionsBuilder<PayloadJoinDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        var db = new PayloadJoinDbContext(options);
+        db.Database.OpenConnection();
+        db.Database.EnsureCreated();
+        return db;
+    }
+
     private sealed class RouteNameDbContext(DbContextOptions<RouteNameDbContext> options) : DbContext(options)
     {
         public DbSet<User> Accounts => Set<User>();
@@ -262,6 +306,20 @@ public class EntityMetadataProviderTests
         }
     }
 
+    private sealed class PayloadJoinDbContext(DbContextOptions<PayloadJoinDbContext> options) : DbContext(options)
+    {
+        public DbSet<Order> Orders => Set<Order>();
+        public DbSet<Product> Products => Set<Product>();
+        public DbSet<OrderLine> OrderLines => Set<OrderLine>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Order>().ToTable("orders");
+            modelBuilder.Entity<Product>().ToTable("products");
+            modelBuilder.Entity<OrderLine>().ToTable("order_lines");
+        }
+    }
+
     private sealed class Asset
     {
         public int Id { get; set; }
@@ -294,5 +352,29 @@ public class EntityMetadataProviderTests
     {
         public int UserId { get; set; }
         public int GroupId { get; set; }
+    }
+
+    private sealed class Order
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public List<OrderLine> OrderLines { get; set; } = [];
+    }
+
+    private sealed class Product
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public List<OrderLine> OrderLines { get; set; } = [];
+    }
+
+    private sealed class OrderLine
+    {
+        public int Id { get; set; }
+        public int OrderId { get; set; }
+        public int ProductId { get; set; }
+        public decimal UnitPrice { get; set; }
+        public Order Order { get; set; } = null!;
+        public Product Product { get; set; } = null!;
     }
 }

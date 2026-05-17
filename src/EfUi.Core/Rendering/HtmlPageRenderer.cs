@@ -113,6 +113,11 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             RenderCollectionPickerScript(html);
         }
 
+        if (!isCreate && entity.RelatedManagementLinks.Any())
+        {
+            RenderRelatedManagementLinks(html, routePrefix, entity);
+        }
+
         html.Append("<button type=\"submit\">Save</button></form>");
         html.Append("</body></html>");
         return html.ToString();
@@ -173,16 +178,31 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             foreach (var option in options)
             {
                 var selected = option.Selected ? " checked" : string.Empty;
+                var disabled = option.Disabled ? " disabled" : string.Empty;
                 var encodedValue = WebUtility.HtmlEncode(option.Value);
                 var encodedLabel = WebUtility.HtmlEncode(option.Label);
                 var normalizedLabel = WebUtility.HtmlEncode(option.Label.ToLowerInvariant());
+                var description = string.IsNullOrWhiteSpace(option.Description)
+                    ? string.Empty
+                    : $" <small>{WebUtility.HtmlEncode(option.Description)}</small>";
                 html.Append($"<label class=\"efui-collection-picker-option\" data-search-text=\"{normalizedLabel}\" style=\"display:block; margin-bottom:0.25rem;\">");
-                html.Append($"<input name=\"{fieldName}\" type=\"checkbox\" value=\"{encodedValue}\"{selected} /> <span>{encodedLabel}</span>");
+                html.Append($"<input name=\"{fieldName}\" type=\"checkbox\" value=\"{encodedValue}\"{selected}{disabled} /> <span>{encodedLabel}</span>{description}");
                 html.Append("</label>");
             }
         }
 
         html.Append("</div></div>");
+    }
+
+    private static void RenderRelatedManagementLinks(StringBuilder html, string routePrefix, EntityMetadata entity)
+    {
+        html.Append("<section><h2>Related rows</h2>");
+        foreach (var link in entity.RelatedManagementLinks)
+        {
+            html.Append($"<div><label>{WebUtility.HtmlEncode(link.Name)}</label> <a href=\"{routePrefix}/{link.RouteName}\">Manage related rows</a></div>");
+        }
+
+        html.Append("</section>");
     }
 
     private static void RenderCollectionPickerScript(StringBuilder html)

@@ -272,15 +272,17 @@ public static class EfUiApplicationBuilderExtensions
 
             var selectedValues = GetSelectedValues(dbContext, field, model, submittedValues);
             options[field.Name] = ReadRows(dbContext, field.RelatedClrType)
-                .Select(row => CreateRelatedEntityOption(dbContext, field.RelatedClrType, row, selectedValues))
+                .Select(row => CreateRelatedEntityOption(dbContext, metadata, field, row, selectedValues, model))
                 .ToList();
         }
 
         return options;
     }
 
-    private static RelatedEntityOption CreateRelatedEntityOption(DbContext dbContext, Type relatedClrType, object row, HashSet<string> selectedValues)
+    private static RelatedEntityOption CreateRelatedEntityOption(DbContext dbContext, EntityMetadata metadata, EditableFieldMetadata field, object row, HashSet<string> selectedValues, object? model)
     {
+        var relatedClrType = field.RelatedClrType
+            ?? throw new InvalidOperationException($"Field '{field.Name}' is missing a related entity type.");
         var entityType = dbContext.Model.FindEntityType(relatedClrType)
             ?? throw new InvalidOperationException($"Unknown related entity type '{relatedClrType.Name}'.");
         var primaryKey = entityType.FindPrimaryKey()?.Properties.SingleOrDefault()
@@ -288,7 +290,28 @@ public static class EfUiApplicationBuilderExtensions
 
         var keyValue = row.GetType().GetProperty(primaryKey.Name)?.GetValue(row);
         var value = FormatValue(keyValue);
-        return new RelatedEntityOption(value, GetRelatedEntityLabel(row, primaryKey.Name, value), selectedValues.Contains(value));
+        var label = GetRelatedEntityLabel(row, primaryKey.Name, value);
+        var selected = selectedValues.Contains(value);
+
+        if (field.Kind == EditableFieldKind.Collection
+            && field.CollectionRelationshipKind == CollectionRelationshipKind.OneToMany
+            && field.ScalarPropertyName is not null
+            && model is not null)
+        {
+            var ownerValue = row.GetType().GetProperty(field.ScalarPropertyName)?.GetValue(row);
+            var currentParentKey = model.GetType().GetProperty(metadata.PrimaryKeyProperty.Name)?.GetValue(model);
+            if (ownerValue is not null && !Equals(ownerValue, currentParentKey))
+            {
+                var owner = dbContext.Find(metadata.ClrType, ownerValue);
+                var ownerLabel = owner is null
+                    ? FormatValue(ownerValue)
+                    : GetRelatedEntityLabel(owner, metadata.PrimaryKeyProperty.Name, FormatValue(ownerValue));
+
+                return new RelatedEntityOption(value, label, selected, Disabled: true, Description: $"assigned to {ownerLabel}");
+            }
+        }
+
+        return new RelatedEntityOption(value, label, selected);
     }
 
     private static string GetRelatedEntityLabel(object row, string primaryKeyPropertyName, string primaryKeyValue)

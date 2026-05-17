@@ -57,6 +57,14 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Get_group_create_form_does_not_render_one_to_many_picker_before_parent_exists()
+    {
+        var html = await _client.GetStringAsync("/simple/groups/new");
+
+        html.Should().NotContain("name=\"Users\" type=\"checkbox\"");
+    }
+
+    [Fact]
     public async Task Get_edit_form_for_existing_row_renders_current_values()
     {
         var email = $"edit-{Guid.NewGuid():N}@example.com";
@@ -82,6 +90,21 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("<select name=\"Group\">");
         html.Should().Contain(">Admins<");
         html.Should().Contain(">Guests<");
+        html.Should().NotContain("name=\"GroupId\"");
+    }
+
+    [Fact]
+    public async Task Get_group_edit_form_renders_users_as_one_to_many_picker_with_disabled_foreign_owned_rows()
+    {
+        var email = $"group-picker-{Guid.NewGuid():N}@example.com";
+        var id = await CreateUserAndGetIdAsync("Group Picker User", email);
+
+        var html = await _client.GetStringAsync("/simple/groups/1/edit");
+
+        html.Should().Contain("type=\"search\"");
+        html.Should().Contain($"name=\"Users\" type=\"checkbox\" value=\"{id}\" checked");
+        html.Should().Contain("name=\"Users\" type=\"checkbox\" value=\"2\" disabled");
+        html.Should().Contain("assigned to Guests");
         html.Should().NotContain("name=\"GroupId\"");
     }
 
@@ -173,6 +196,25 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("name=\"CreatedAt\" value=\"bad-date\"");
         html.Should().NotContain(originalEmail);
         html.Should().NotContain("2026-05-17T10:00:00.0000000");
+    }
+
+    [Fact]
+    public async Task Post_update_group_with_no_users_clears_optional_one_to_many_assignments()
+    {
+        var email = $"clear-group-{Guid.NewGuid():N}@example.com";
+        var id = await CreateUserAndGetIdAsync("Clear Group User", email);
+
+        var response = await _client.PostAsync(
+            "/simple/groups/1",
+            new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("Name", "Admins")
+            }));
+
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
+
+        var html = await _client.GetStringAsync("/simple/groups/1/edit");
+        html.Should().NotContain($"name=\"Users\" type=\"checkbox\" value=\"{id}\" checked");
     }
 
     [Fact]

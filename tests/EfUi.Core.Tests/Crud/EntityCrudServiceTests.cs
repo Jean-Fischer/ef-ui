@@ -269,6 +269,115 @@ public class EntityCrudServiceTests
         updated.Tracks.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task UpdateAsync_reconciles_optional_one_to_many_collection_from_group_side()
+    {
+        await using var db = await CreateDbAsync();
+
+        var guests = new Group { Name = "Guests" };
+        var attachedUser = new User
+        {
+            Name = "Ada",
+            Email = "ada@example.com",
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 5, 17),
+            GroupId = 1
+        };
+        var foreignOwnedUser = new User
+        {
+            Name = "Linus",
+            Email = "linus@example.com",
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 5, 17),
+            Group = guests
+        };
+        var unassignedUser = new User
+        {
+            Name = "Unassigned",
+            Email = "unassigned@example.com",
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 5, 17)
+        };
+
+        db.Groups.Add(guests);
+        db.Users.AddRange(attachedUser, foreignOwnedUser, unassignedUser);
+        await db.SaveChangesAsync();
+
+        var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+
+        var result = await sut.UpdateAsync(db, "groups", 1, new Dictionary<string, string[]>
+        {
+            ["Name"] = ["Admins"],
+            ["Users"] = [unassignedUser.Id.ToString()]
+        });
+
+        result.IsSuccess.Should().BeTrue();
+
+        var users = await db.Users.OrderBy(x => x.Id).ToListAsync();
+        users.Single(x => x.Id == attachedUser.Id).GroupId.Should().BeNull();
+        users.Single(x => x.Id == foreignOwnedUser.Id).GroupId.Should().Be(guests.Id);
+        users.Single(x => x.Id == unassignedUser.Id).GroupId.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_rejects_one_to_many_selection_for_child_owned_by_another_parent()
+    {
+        await using var db = await CreateDbAsync();
+
+        var guests = new Group { Name = "Guests" };
+        var attachedUser = new User
+        {
+            Name = "Ada",
+            Email = "ada@example.com",
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 5, 17),
+            GroupId = 1
+        };
+        var foreignOwnedUser = new User
+        {
+            Name = "Linus",
+            Email = "linus@example.com",
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 5, 17),
+            Group = guests
+        };
+
+        db.Groups.Add(guests);
+        db.Users.AddRange(attachedUser, foreignOwnedUser);
+        await db.SaveChangesAsync();
+
+        var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+
+        var result = await sut.UpdateAsync(db, "groups", 1, new Dictionary<string, string[]>
+        {
+            ["Name"] = ["Admins"],
+            ["Users"] = [attachedUser.Id.ToString(), foreignOwnedUser.Id.ToString()]
+        });
+
+        result.IsSuccess.Should().BeFalse();
+        result.Errors.Should().ContainKey("Users");
+
+        var users = await db.Users.OrderBy(x => x.Id).ToListAsync();
+        users.Single(x => x.Id == attachedUser.Id).GroupId.Should().Be(1);
+        users.Single(x => x.Id == foreignOwnedUser.Id).GroupId.Should().Be(guests.Id);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_rejects_required_one_to_many_removal()
+    {
+        await using var db = await CreateRequiredOneToManyDbAsync();
+        var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+
+        var result = await sut.UpdateAsync(db, "artists", 1, new Dictionary<string, string[]>
+        {
+            ["Name"] = ["Queen"],
+            ["Albums"] = []
+        });
+
+        result.IsSuccess.Should().BeFalse();
+        result.Errors.Should().ContainKey("Albums");
+    }
+
     private static async Task<SampleModelDbContext> CreateDbAsync()
     {
         var options = new DbContextOptionsBuilder<SampleModelDbContext>()
@@ -288,6 +397,25 @@ public class EntityCrudServiceTests
         var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
         return await CreateAssignedKeyDbAsync(connection, ownsConnection: true);
+    }
+
+    private static async Task<RequiredOneToManyDbContext> CreateRequiredOneToManyDbAsync()
+    {
+        var options = new DbContextOptionsBuilder<RequiredOneToManyDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        var db = new RequiredOneToManyDbContext(options);
+        await db.Database.OpenConnectionAsync();
+        await db.Database.EnsureCreatedAsync();
+
+        db.Artists.Add(new RequiredArtist
+        {
+            Name = "Queen",
+            Albums = [new RequiredAlbum { Title = "News of the World" }]
+        });
+        await db.SaveChangesAsync();
+        return db;
     }
 
     private static async Task<ManyToManyCrudDbContext> CreateManyToManyDbAsync()
@@ -377,6 +505,33 @@ public class EntityCrudServiceTests
         }
     }
 
+    private sealed class RequiredOneToManyDbContext(DbContextOptions<RequiredOneToManyDbContext> options) : DbContext(options)
+    {
+        public DbSet<RequiredArtist> Artists => Set<RequiredArtist>();
+        public DbSet<RequiredAlbum> Albums => Set<RequiredAlbum>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<RequiredArtist>(builder =>
+            {
+                builder.ToTable("artists");
+                builder.HasKey(x => x.Id);
+                builder.Property(x => x.Name).IsRequired();
+            });
+
+            modelBuilder.Entity<RequiredAlbum>(builder =>
+            {
+                builder.ToTable("albums");
+                builder.HasKey(x => x.Id);
+                builder.Property(x => x.Title).IsRequired();
+                builder.HasOne(x => x.Artist)
+                    .WithMany(x => x.Albums)
+                    .HasForeignKey(x => x.ArtistId)
+                    .IsRequired();
+            });
+        }
+    }
+
     private sealed class PlaylistWithTracks
     {
         public int Id { get; set; }
@@ -389,5 +544,20 @@ public class EntityCrudServiceTests
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
         public List<PlaylistWithTracks> Playlists { get; set; } = [];
+    }
+
+    private sealed class RequiredArtist
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public List<RequiredAlbum> Albums { get; set; } = [];
+    }
+
+    private sealed class RequiredAlbum
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public int ArtistId { get; set; }
+        public RequiredArtist Artist { get; set; } = null!;
     }
 }
