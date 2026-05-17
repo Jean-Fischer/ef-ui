@@ -1,3 +1,4 @@
+using EfUi.AspNetCore;
 using EfUi.SampleHost.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,6 +16,13 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.MapGet("/", () => Results.Redirect("/efui"));
+
+app.UseEfUi(options =>
+{
+    options.DbContextType = typeof(SampleDbContext);
+    options.RoutePrefix = "/efui";
+    options.EnableInProduction = false;
+});
 
 app.Run();
 
