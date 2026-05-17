@@ -165,33 +165,51 @@ function Wait-ForCeTaskCompletion {
     throw "Timed out waiting for CE task completion: $CeTaskUrl"
 }
 
+function Get-ObjectPropertyValue {
+    param(
+        [Parameter(Mandatory)]
+        [psobject]$Object,
+
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $null
+    }
+
+    return $property.Value
+}
+
 function Normalize-SonarIssue {
     param(
         [Parameter(Mandatory)]
         [psobject]$Issue
     )
 
-    $file = $Issue.component
+    $file = Get-ObjectPropertyValue -Object $Issue -Name 'component'
     if (-not [string]::IsNullOrWhiteSpace($file) -and $file.Contains(':')) {
         $file = ($file -split ':', 2)[1]
     }
 
-    $impactSeverities = @($Issue.impacts | ForEach-Object { $_.severity } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
-    $impactQualities = @($Issue.impacts | ForEach-Object { $_.softwareQuality } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+    $impacts = @(Get-ObjectPropertyValue -Object $Issue -Name 'impacts')
+    $impactSeverities = @($impacts | ForEach-Object { Get-ObjectPropertyValue -Object $_ -Name 'severity' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+    $impactQualities = @($impacts | ForEach-Object { Get-ObjectPropertyValue -Object $_ -Name 'softwareQuality' } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
     $primaryImpactSeverity = if ($impactSeverities.Count -gt 0) { $impactSeverities[0] } else { $null }
 
     return [pscustomobject]@{
-        key                   = $Issue.key
-        severity              = $Issue.severity
-        impactSeverity        = $primaryImpactSeverity
-        impactSeverities      = $impactSeverities
+        key                     = Get-ObjectPropertyValue -Object $Issue -Name 'key'
+        severity                = Get-ObjectPropertyValue -Object $Issue -Name 'severity'
+        impactSeverity          = $primaryImpactSeverity
+        impactSeverities        = $impactSeverities
         impactSoftwareQualities = $impactQualities
-        type                  = $Issue.type
-        rule                  = $Issue.rule
-        message               = $Issue.message
-        file                  = $file
-        line                  = $Issue.line
-        status                = $Issue.status
+        type                    = Get-ObjectPropertyValue -Object $Issue -Name 'type'
+        rule                    = Get-ObjectPropertyValue -Object $Issue -Name 'rule'
+        message                 = Get-ObjectPropertyValue -Object $Issue -Name 'message'
+        file                    = $file
+        line                    = Get-ObjectPropertyValue -Object $Issue -Name 'line'
+        status                  = Get-ObjectPropertyValue -Object $Issue -Name 'status'
     }
 }
 
