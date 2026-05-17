@@ -86,6 +86,21 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Get_group_edit_form_renders_users_as_one_to_many_picker_with_disabled_foreign_owned_rows()
+    {
+        var email = $"group-picker-{Guid.NewGuid():N}@example.com";
+        var id = await CreateUserAndGetIdAsync("Group Picker User", email);
+
+        var html = await _client.GetStringAsync("/simple/groups/1/edit");
+
+        html.Should().Contain("type=\"search\"");
+        html.Should().Contain($"name=\"Users\" type=\"checkbox\" value=\"{id}\" checked");
+        html.Should().Contain("name=\"Users\" type=\"checkbox\" value=\"2\" disabled");
+        html.Should().Contain("assigned to Guests");
+        html.Should().NotContain("name=\"GroupId\"");
+    }
+
+    [Fact]
     public async Task Post_create_user_redirects_back_to_entity_page()
     {
         var response = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(new Dictionary<string, string>
@@ -173,6 +188,25 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("name=\"CreatedAt\" value=\"bad-date\"");
         html.Should().NotContain(originalEmail);
         html.Should().NotContain("2026-05-17T10:00:00.0000000");
+    }
+
+    [Fact]
+    public async Task Post_update_group_with_no_users_clears_optional_one_to_many_assignments()
+    {
+        var email = $"clear-group-{Guid.NewGuid():N}@example.com";
+        var id = await CreateUserAndGetIdAsync("Clear Group User", email);
+
+        var response = await _client.PostAsync(
+            "/simple/groups/1",
+            new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("Name", "Admins")
+            }));
+
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
+
+        var html = await _client.GetStringAsync("/simple/groups/1/edit");
+        html.Should().NotContain($"name=\"Users\" type=\"checkbox\" value=\"{id}\" checked");
     }
 
     [Fact]

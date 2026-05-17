@@ -87,6 +87,32 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     }
 
     [Fact]
+    public async Task Post_update_artist_with_no_albums_returns_required_relationship_validation_error()
+    {
+        var response = await _client.PostAsync(
+            "/chinook/artists/1",
+            new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("Name", "AC/DC")
+            }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var html = await response.Content.ReadAsStringAsync();
+        html.Should().Contain("Albums");
+        html.Should().Contain("cannot be removed");
+    }
+
+    [Fact]
+    public async Task Get_invoice_edit_form_shows_manage_link_for_payload_join_rows()
+    {
+        var html = await _client.GetStringAsync("/chinook/invoices/1/edit");
+
+        html.Should().Contain("Manage related rows");
+        html.Should().Contain("/chinook/invoice_items");
+        html.Should().NotContain("name=\"InvoiceItems\" type=\"checkbox\"");
+    }
+
+    [Fact]
     public async Task Post_update_genre_persists_changes()
     {
         var updatedName = $"Updated Genre {Guid.NewGuid():N}";
