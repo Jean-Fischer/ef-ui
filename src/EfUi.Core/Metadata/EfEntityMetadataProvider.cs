@@ -39,7 +39,69 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 property.Name == keyProperty.Name))
             .ToList();
 
+        var referenceFields = entityType.GetForeignKeys()
+            .Where(foreignKey => foreignKey.DependentToPrincipal is not null)
+            .Where(foreignKey => foreignKey.Properties.Count == 1)
+            .Select(foreignKey => new
+            {
+                ForeignKey = foreignKey,
+                Property = scalarProperties.Single(property => property.Name == foreignKey.Properties[0].Name),
+                NavigationName = foreignKey.DependentToPrincipal!.Name,
+                RelatedClrType = foreignKey.PrincipalEntityType.ClrType
+            })
+            .ToList();
+
+        var suppressedScalarPropertyNames = referenceFields
+            .Select(field => field.Property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var collectionFields = entityType.GetSkipNavigations()
+            .Where(navigation => navigation.IsCollection)
+            .Where(navigation => navigation.TargetEntityType.FindPrimaryKey()?.Properties.Count == 1)
+            .Select(navigation => new EditableFieldMetadata(
+                navigation.Name,
+                EditableFieldKind.Collection,
+                typeof(string[]),
+                null,
+                navigation.Name,
+                navigation.TargetEntityType.ClrType,
+                false))
+            .ToList();
+
         var primaryKeyMetadata = scalarProperties.Single(property => property.IsPrimaryKey);
+        var editableProperties = scalarProperties.Where(x => x.IsEditableOnUpdate).ToList();
+
+        var createEditableFields = scalarProperties
+            .Where(property => property.IsEditableOnCreate)
+            .Where(property => !suppressedScalarPropertyNames.Contains(property.Name))
+            .Select(CreateScalarField)
+            .Concat(referenceFields
+                .Where(field => field.Property.IsEditableOnCreate)
+                .Select(field => new EditableFieldMetadata(
+                    field.NavigationName,
+                    EditableFieldKind.Reference,
+                    field.Property.ClrType,
+                    field.Property.Name,
+                    field.NavigationName,
+                    field.RelatedClrType,
+                    !IsNullable(field.Property.ClrType))))
+            .ToList();
+
+        var updateEditableFields = editableProperties
+            .Where(property => !suppressedScalarPropertyNames.Contains(property.Name))
+            .Select(CreateScalarField)
+            .Concat(referenceFields
+                .Where(field => field.Property.IsEditableOnUpdate)
+                .Select(field => new EditableFieldMetadata(
+                    field.NavigationName,
+                    EditableFieldKind.Reference,
+                    field.Property.ClrType,
+                    field.Property.Name,
+                    field.NavigationName,
+                    field.RelatedClrType,
+                    !IsNullable(field.Property.ClrType))))
+            .Concat(collectionFields)
+            .ToList();
 
         return new EntityMetadata(
             entityType.ClrType.Name,
@@ -47,8 +109,20 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             entityType.ClrType,
             primaryKeyMetadata,
             scalarProperties,
-            scalarProperties.Where(x => x.IsEditableOnUpdate).ToList());
+            editableProperties,
+            createEditableFields,
+            updateEditableFields);
     }
+
+    private static EditableFieldMetadata CreateScalarField(EntityPropertyMetadata property)
+        => new(
+            property.Name,
+            EditableFieldKind.Scalar,
+            property.ClrType,
+            property.Name,
+            null,
+            null,
+            !IsNullable(property.ClrType));
 
     private static bool IsSharedJoinEntity(IEntityType entityType)
         => entityType.ClrType == typeof(Dictionary<string, object>)
@@ -97,4 +171,7 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             || actual == typeof(DateTime)
             || actual == typeof(Guid);
     }
+
+    private static bool IsNullable(Type type)
+        => !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
 }

@@ -24,7 +24,7 @@ public class EntityCrudServiceTests
             ["Email"] = "grace@example.com",
             ["IsActive"] = "true",
             ["CreatedAt"] = "2026-05-17T10:00:00",
-            ["GroupId"] = "1"
+            ["Group"] = "1"
         });
 
         result.IsSuccess.Should().BeTrue();
@@ -57,6 +57,33 @@ public class EntityCrudServiceTests
         var user = await db.Users.SingleAsync();
         user.Name.Should().Be("Ada Lovelace");
         user.Email.Should().Be("ada@example.com");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_updates_many_to_one_navigation_via_reference_field()
+    {
+        await using var db = await CreateDbAsync();
+        db.Groups.Add(new Group { Name = "Guests" });
+        db.Users.Add(new User
+        {
+            Name = "Ada",
+            Email = "ada@example.com",
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 5, 17),
+            GroupId = 1
+        });
+        await db.SaveChangesAsync();
+
+        var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+        var id = db.Users.Single().Id;
+
+        var result = await sut.UpdateAsync(db, "users", id, new Dictionary<string, string?>
+        {
+            ["Group"] = "2"
+        });
+
+        result.IsSuccess.Should().BeTrue();
+        (await db.Users.SingleAsync()).GroupId.Should().Be(2);
     }
 
     [Fact]
@@ -189,6 +216,33 @@ public class EntityCrudServiceTests
         tenant.Name.Should().Be("North Updated");
     }
 
+    [Fact]
+    public async Task UpdateAsync_reconciles_supported_many_to_many_collection()
+    {
+        await using var db = await CreateManyToManyDbAsync();
+
+        var track1 = new PlaylistTrackItem { Name = "Track A" };
+        var track2 = new PlaylistTrackItem { Name = "Track B" };
+        var track3 = new PlaylistTrackItem { Name = "Track C" };
+        var playlist = new PlaylistWithTracks { Name = "Favorites", Tracks = [track1] };
+
+        db.Tracks.AddRange(track1, track2, track3);
+        db.Playlists.Add(playlist);
+        await db.SaveChangesAsync();
+
+        var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+
+        var result = await sut.UpdateAsync(db, "playlists", playlist.Id, new Dictionary<string, string?>
+        {
+            ["Tracks"] = "2,3"
+        });
+
+        result.IsSuccess.Should().BeTrue();
+
+        var updated = await db.Playlists.Include(x => x.Tracks).SingleAsync();
+        updated.Tracks.Select(x => x.Id).Should().BeEquivalentTo([2, 3]);
+    }
+
     private static async Task<SampleModelDbContext> CreateDbAsync()
     {
         var options = new DbContextOptionsBuilder<SampleModelDbContext>()
@@ -208,6 +262,18 @@ public class EntityCrudServiceTests
         var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
         return await CreateAssignedKeyDbAsync(connection, ownsConnection: true);
+    }
+
+    private static async Task<ManyToManyCrudDbContext> CreateManyToManyDbAsync()
+    {
+        var options = new DbContextOptionsBuilder<ManyToManyCrudDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        var db = new ManyToManyCrudDbContext(options);
+        await db.Database.OpenConnectionAsync();
+        await db.Database.EnsureCreatedAsync();
+        return db;
     }
 
     private static async Task<AssignedKeyDbContext> CreateAssignedKeyDbAsync(SqliteConnection connection, bool ownsConnection = false)
@@ -262,5 +328,40 @@ public class EntityCrudServiceTests
         public string TenantKey { get; set; } = string.Empty;
 
         public string Name { get; set; } = string.Empty;
+    }
+
+    private sealed class ManyToManyCrudDbContext(DbContextOptions<ManyToManyCrudDbContext> options) : DbContext(options)
+    {
+        public DbSet<PlaylistWithTracks> Playlists => Set<PlaylistWithTracks>();
+        public DbSet<PlaylistTrackItem> Tracks => Set<PlaylistTrackItem>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<PlaylistWithTracks>()
+                .ToTable("playlists")
+                .HasMany(x => x.Tracks)
+                .WithMany(x => x.Playlists)
+                .UsingEntity<Dictionary<string, object>>(
+                    "playlist_track",
+                    right => right.HasOne<PlaylistTrackItem>().WithMany().HasForeignKey("TrackId"),
+                    left => left.HasOne<PlaylistWithTracks>().WithMany().HasForeignKey("PlaylistId"),
+                    join => join.HasKey("PlaylistId", "TrackId"));
+
+            modelBuilder.Entity<PlaylistTrackItem>().ToTable("tracks");
+        }
+    }
+
+    private sealed class PlaylistWithTracks
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public List<PlaylistTrackItem> Tracks { get; set; } = [];
+    }
+
+    private sealed class PlaylistTrackItem
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public List<PlaylistWithTracks> Playlists { get; set; } = [];
     }
 }

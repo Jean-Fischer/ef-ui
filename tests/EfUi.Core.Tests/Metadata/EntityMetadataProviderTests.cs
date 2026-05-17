@@ -81,6 +81,19 @@ public class EntityMetadataProviderTests
     }
 
     [Fact]
+    public void GetEntity_exposes_many_to_one_navigation_as_reference_field()
+    {
+        using var db = CreateDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var user = sut.GetEntity(db, "users");
+
+        user.UpdateEditableFields.Select(x => x.Name).Should().Contain("Group");
+        user.UpdateEditableFields.Select(x => x.Name).Should().NotContain("GroupId");
+        user.UpdateEditableFields.Single(x => x.Name == "Group").Kind.Should().Be(EditableFieldKind.Reference);
+    }
+
+    [Fact]
     public void GetEntities_skips_shared_join_entities_without_single_primary_keys()
     {
         using var db = CreateManyToManyDb();
@@ -89,6 +102,18 @@ public class EntityMetadataProviderTests
         var entities = sut.GetEntities(db).Select(x => x.RouteName).ToList();
 
         entities.Should().BeEquivalentTo(["playlists", "tracks"]);
+    }
+
+    [Fact]
+    public void GetEntity_exposes_supported_skip_navigation_as_collection_field()
+    {
+        using var db = CreateManyToManyDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var playlist = sut.GetEntity(db, "playlists");
+
+        playlist.UpdateEditableFields.Select(x => x.Name).Should().Contain("Tracks");
+        playlist.UpdateEditableFields.Single(x => x.Name == "Tracks").Kind.Should().Be(EditableFieldKind.Collection);
     }
 
     [Fact]

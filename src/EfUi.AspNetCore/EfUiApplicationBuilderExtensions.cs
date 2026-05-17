@@ -82,7 +82,14 @@ public static class EfUiApplicationBuilderExtensions
             return Results.NotFound();
         }
 
-        var html = new HtmlPageRenderer().RenderEditForm(options.RoutePrefix, metadata, null, true, new Dictionary<string, string[]>(), null);
+        var html = new HtmlPageRenderer().RenderEditForm(
+            options.RoutePrefix,
+            metadata,
+            null,
+            true,
+            new Dictionary<string, string[]>(),
+            null,
+            fieldOptions: BuildFieldOptions(dbContext, metadata, null, null));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -107,7 +114,16 @@ public static class EfUiApplicationBuilderExtensions
             return Results.NotFound();
         }
 
-        var html = new HtmlPageRenderer().RenderEditForm(options.RoutePrefix, metadata, model, false, new Dictionary<string, string[]>(), key);
+        await LoadEditableCollectionsAsync(dbContext, metadata, model, isCreate: false);
+
+        var html = new HtmlPageRenderer().RenderEditForm(
+            options.RoutePrefix,
+            metadata,
+            model,
+            false,
+            new Dictionary<string, string[]>(),
+            key,
+            fieldOptions: BuildFieldOptions(dbContext, metadata, model, null));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -220,9 +236,131 @@ public static class EfUiApplicationBuilderExtensions
         }
 
         var model = !isCreate && key is not null ? dbContext.Find(metadata.ClrType, key) : null;
-        var html = new HtmlPageRenderer().RenderEditForm(routePrefix, metadata, model, isCreate, result.Errors, key, submittedValues);
+        if (model is not null)
+        {
+            LoadEditableCollectionsAsync(dbContext, metadata, model, isCreate).GetAwaiter().GetResult();
+        }
+
+        var html = new HtmlPageRenderer().RenderEditForm(
+            routePrefix,
+            metadata,
+            model,
+            isCreate,
+            result.Errors,
+            key,
+            submittedValues,
+            BuildFieldOptions(dbContext, metadata, model, submittedValues));
         return Results.Content(html, HtmlContentType, statusCode: StatusCodes.Status400BadRequest);
     }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>> BuildFieldOptions(DbContext dbContext, EntityMetadata metadata, object? model, IReadOnlyDictionary<string, string?>? submittedValues)
+    {
+        var options = new Dictionary<string, IReadOnlyList<RelatedEntityOption>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var field in metadata.CreateEditableFields.Concat(metadata.UpdateEditableFields).DistinctBy(field => field.Name))
+        {
+            if (field.Kind is not EditableFieldKind.Reference and not EditableFieldKind.Collection || field.RelatedClrType is null)
+            {
+                continue;
+            }
+
+            var selectedValues = GetSelectedValues(dbContext, field, model, submittedValues);
+            options[field.Name] = ReadRows(dbContext, field.RelatedClrType)
+                .Select(row => CreateRelatedEntityOption(dbContext, field.RelatedClrType, row, selectedValues))
+                .ToList();
+        }
+
+        return options;
+    }
+
+    private static RelatedEntityOption CreateRelatedEntityOption(DbContext dbContext, Type relatedClrType, object row, HashSet<string> selectedValues)
+    {
+        var entityType = dbContext.Model.FindEntityType(relatedClrType)
+            ?? throw new InvalidOperationException($"Unknown related entity type '{relatedClrType.Name}'.");
+        var primaryKey = entityType.FindPrimaryKey()?.Properties.SingleOrDefault()
+            ?? throw new InvalidOperationException($"Entity '{relatedClrType.Name}' must have a single primary key.");
+
+        var keyValue = row.GetType().GetProperty(primaryKey.Name)?.GetValue(row);
+        var value = FormatValue(keyValue);
+        return new RelatedEntityOption(value, GetRelatedEntityLabel(row, primaryKey.Name, value), selectedValues.Contains(value));
+    }
+
+    private static string GetRelatedEntityLabel(object row, string primaryKeyPropertyName, string primaryKeyValue)
+    {
+        foreach (var preferredName in new[] { "Name", "Title", "Email" })
+        {
+            var property = row.GetType().GetProperty(preferredName);
+            var value = property?.GetValue(row);
+            if (value is not null && !string.IsNullOrWhiteSpace(value.ToString()))
+            {
+                return value.ToString()!;
+            }
+        }
+
+        return primaryKeyValue;
+    }
+
+    private static HashSet<string> GetSelectedValues(DbContext dbContext, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string?>? submittedValues)
+    {
+        if (submittedValues is not null && submittedValues.TryGetValue(field.Name, out var submittedValue))
+        {
+            return submittedValue?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                       .ToHashSet(StringComparer.Ordinal)
+                   ?? [];
+        }
+
+        if (model is null)
+        {
+            return [];
+        }
+
+        if (field.Kind == EditableFieldKind.Reference && field.ScalarPropertyName is not null)
+        {
+            var currentValue = model.GetType().GetProperty(field.ScalarPropertyName)?.GetValue(model);
+            var formatted = FormatValue(currentValue);
+            return string.IsNullOrWhiteSpace(formatted) ? [] : [formatted];
+        }
+
+        if (field.Kind == EditableFieldKind.Collection && field.NavigationPropertyName is not null && field.RelatedClrType is not null)
+        {
+            var collection = model.GetType().GetProperty(field.NavigationPropertyName)?.GetValue(model) as System.Collections.IEnumerable;
+            if (collection is null)
+            {
+                return [];
+            }
+
+            var keyPropertyName = dbContext.Model.FindEntityType(field.RelatedClrType)?.FindPrimaryKey()?.Properties.SingleOrDefault()?.Name;
+            if (keyPropertyName is null)
+            {
+                return [];
+            }
+
+            return collection.Cast<object>()
+                .Select(item => item.GetType().GetProperty(keyPropertyName)?.GetValue(item))
+                .Select(FormatValue)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .ToHashSet(StringComparer.Ordinal);
+        }
+
+        return [];
+    }
+
+    private static async Task LoadEditableCollectionsAsync(DbContext dbContext, EntityMetadata metadata, object model, bool isCreate)
+    {
+        var fields = isCreate ? metadata.CreateEditableFields : metadata.UpdateEditableFields;
+        foreach (var field in fields.Where(field => field.Kind == EditableFieldKind.Collection && field.NavigationPropertyName is not null))
+        {
+            await dbContext.Entry(model).Collection(field.NavigationPropertyName!).LoadAsync();
+        }
+    }
+
+    private static string FormatValue(object? value)
+        => value switch
+        {
+            null => string.Empty,
+            DateTime dateTime => dateTime.ToString("O"),
+            _ => value.ToString() ?? string.Empty
+        };
 
     private static async Task<Dictionary<string, string?>> ReadFormAsync(HttpRequest request)
     {

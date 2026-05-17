@@ -72,6 +72,20 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Get_edit_form_renders_group_dropdown_instead_of_raw_group_id_input()
+    {
+        var email = $"group-{Guid.NewGuid():N}@example.com";
+        var id = await CreateUserAndGetIdAsync("Group User", email);
+
+        var html = await _client.GetStringAsync($"/simple/users/{id}/edit");
+
+        html.Should().Contain("<select name=\"Group\">");
+        html.Should().Contain(">Admins<");
+        html.Should().Contain(">Guests<");
+        html.Should().NotContain("name=\"GroupId\"");
+    }
+
+    [Fact]
     public async Task Post_create_user_redirects_back_to_entity_page()
     {
         var response = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(new Dictionary<string, string>
@@ -80,7 +94,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
             ["Email"] = $"grace-{Guid.NewGuid():N}@example.com",
             ["IsActive"] = "true",
             ["CreatedAt"] = "2026-05-17T10:00:00",
-            ["GroupId"] = "1"
+            ["Group"] = "1"
         }));
 
         response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
@@ -101,7 +115,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
             ["Email"] = updatedEmail,
             ["IsActive"] = "false",
             ["CreatedAt"] = "2026-05-18T12:30:00",
-            ["GroupId"] = "1"
+            ["Group"] = "2"
         }));
 
         response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
@@ -113,6 +127,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain($"name=\"Email\" value=\"{updatedEmail}\"");
         html.Should().Contain("name=\"IsActive\" value=\"False\"");
         html.Should().Contain("name=\"CreatedAt\" value=\"2026-05-18T12:30:00.0000000\"");
+        html.Should().Contain("<option value=\"2\" selected>Guests</option>");
     }
 
     [Fact]
@@ -125,7 +140,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
             ["Email"] = email,
             ["IsActive"] = "true",
             ["CreatedAt"] = "not-a-date",
-            ["GroupId"] = "1"
+            ["Group"] = "1"
         }));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -189,7 +204,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
             ["Email"] = email,
             ["IsActive"] = "true",
             ["CreatedAt"] = "2026-05-17T10:00:00",
-            ["GroupId"] = "1"
+            ["Group"] = "1"
         }));
 
         createResponse.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);

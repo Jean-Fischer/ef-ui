@@ -15,7 +15,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         }
 
         var instance = Activator.CreateInstance(entity.ClrType)!;
-        var applyResult = ApplyValues(instance, entity.CreateEditableProperties, values);
+        var applyResult = await ApplyValuesAsync(dbContext, instance, entity.CreateEditableFields, values);
         if (!applyResult.IsSuccess)
         {
             return applyResult;
@@ -39,7 +39,9 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
             return CrudOperationResult.Failure("id", "Row not found.");
         }
 
-        var applyResult = ApplyValues(instance, entity.UpdateEditableProperties, values);
+        await LoadCollectionFieldsAsync(dbContext, instance, entity.UpdateEditableFields);
+
+        var applyResult = await ApplyValuesAsync(dbContext, instance, entity.UpdateEditableFields, values);
         if (!applyResult.IsSuccess)
         {
             return applyResult;
@@ -92,29 +94,107 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         }
     }
 
-    private CrudOperationResult ApplyValues(object instance, IReadOnlyList<EntityPropertyMetadata> properties, IReadOnlyDictionary<string, string?> values)
+    private async Task<CrudOperationResult> ApplyValuesAsync(DbContext dbContext, object instance, IReadOnlyList<EditableFieldMetadata> fields, IReadOnlyDictionary<string, string?> values)
     {
         var boundValues = new List<(string PropertyName, object? Value)>();
+        var collectionFields = new List<(EditableFieldMetadata Field, string? RawValue)>();
 
-        foreach (var property in properties)
+        foreach (var field in fields)
         {
-            if (!values.TryGetValue(property.Name, out var rawValue))
+            if (!values.TryGetValue(field.Name, out var rawValue))
             {
                 continue;
             }
 
-            var bindResult = binder.Bind(property.ClrType, rawValue);
-            if (!bindResult.IsSuccess)
+            if (field.Kind == EditableFieldKind.Collection)
             {
-                return CrudOperationResult.Failure(property.Name, bindResult.Error ?? "Invalid value.");
+                collectionFields.Add((field, rawValue));
+                continue;
             }
 
-            boundValues.Add((property.Name, bindResult.Value));
+            var propertyName = field.ScalarPropertyName ?? field.Name;
+            var propertyInfo = instance.GetType().GetProperty(propertyName)!;
+            var bindResult = binder.Bind(propertyInfo.PropertyType, rawValue);
+            if (!bindResult.IsSuccess)
+            {
+                return CrudOperationResult.Failure(field.Name, bindResult.Error ?? "Invalid value.");
+            }
+
+            boundValues.Add((propertyName, bindResult.Value));
         }
 
         foreach (var boundValue in boundValues)
         {
             instance.GetType().GetProperty(boundValue.PropertyName)!.SetValue(instance, boundValue.Value);
+        }
+
+        foreach (var collectionField in collectionFields)
+        {
+            var collectionResult = await ApplyCollectionFieldAsync(dbContext, instance, collectionField.Field, collectionField.RawValue);
+            if (!collectionResult.IsSuccess)
+            {
+                return collectionResult;
+            }
+        }
+
+        return CrudOperationResult.Success();
+    }
+
+    private static async Task LoadCollectionFieldsAsync(DbContext dbContext, object instance, IReadOnlyList<EditableFieldMetadata> fields)
+    {
+        foreach (var field in fields.Where(field => field.Kind == EditableFieldKind.Collection && field.NavigationPropertyName is not null))
+        {
+            await dbContext.Entry(instance).Collection(field.NavigationPropertyName!).LoadAsync();
+        }
+    }
+
+    private async Task<CrudOperationResult> ApplyCollectionFieldAsync(DbContext dbContext, object instance, EditableFieldMetadata field, string? rawValue)
+    {
+        if (field.NavigationPropertyName is null || field.RelatedClrType is null)
+        {
+            return CrudOperationResult.Failure(field.Name, "Invalid collection configuration.");
+        }
+
+        var entityType = dbContext.Model.FindEntityType(field.RelatedClrType);
+        var keyProperty = entityType?.FindPrimaryKey()?.Properties.SingleOrDefault();
+        if (keyProperty is null)
+        {
+            return CrudOperationResult.Failure(field.Name, "Related entity must have a single primary key.");
+        }
+
+        var selectedValues = string.IsNullOrWhiteSpace(rawValue)
+            ? []
+            : rawValue.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        var relatedEntities = new List<object>();
+        foreach (var selectedValue in selectedValues)
+        {
+            var bindResult = binder.Bind(keyProperty.ClrType, selectedValue);
+            if (!bindResult.IsSuccess)
+            {
+                return CrudOperationResult.Failure(field.Name, bindResult.Error ?? "Invalid value.");
+            }
+
+            var relatedEntity = await dbContext.FindAsync(field.RelatedClrType, bindResult.Value!);
+            if (relatedEntity is null)
+            {
+                return CrudOperationResult.Failure(field.Name, "Selected related row not found.");
+            }
+
+            relatedEntities.Add(relatedEntity);
+        }
+
+        var navigationProperty = instance.GetType().GetProperty(field.NavigationPropertyName)!;
+        var collection = navigationProperty.GetValue(instance) as System.Collections.IList;
+        if (collection is null)
+        {
+            return CrudOperationResult.Failure(field.Name, "Collection navigation is not editable.");
+        }
+
+        collection.Clear();
+        foreach (var relatedEntity in relatedEntities)
+        {
+            collection.Add(relatedEntity);
         }
 
         return CrudOperationResult.Success();

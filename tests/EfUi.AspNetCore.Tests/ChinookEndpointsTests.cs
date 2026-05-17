@@ -35,6 +35,36 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     }
 
     [Fact]
+    public async Task Get_playlist_edit_form_renders_tracks_multi_select()
+    {
+        var html = await _client.GetStringAsync("/chinook/playlists/1/edit");
+
+        html.Should().Contain("<select name=\"Tracks\" multiple>");
+        html.Should().Contain("Track");
+    }
+
+    [Fact]
+    public async Task Post_update_playlist_reconciles_track_selection()
+    {
+        var response = await _client.PostAsync(
+            "/chinook/playlists/1",
+            new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("Name", "Music"),
+                new KeyValuePair<string, string>("Tracks", "2"),
+                new KeyValuePair<string, string>("Tracks", "3")
+            }));
+
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
+        response.Headers.Location.Should().NotBeNull();
+        response.Headers.Location!.ToString().Should().Be("/chinook/playlists");
+
+        var html = await _client.GetStringAsync("/chinook/playlists/1/edit");
+        html.Should().Contain("<option value=\"2\" selected");
+        html.Should().Contain("<option value=\"3\" selected");
+    }
+
+    [Fact]
     public async Task Post_update_genre_persists_changes()
     {
         var updatedName = $"Updated Genre {Guid.NewGuid():N}";

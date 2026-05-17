@@ -58,10 +58,10 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         return html.ToString();
     }
 
-    public string RenderForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, IReadOnlyDictionary<string, string?>? submittedValues = null)
-        => RenderEditForm(routePrefix, entity, model, isCreate, errors, null, submittedValues);
+    public string RenderForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, IReadOnlyDictionary<string, string?>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
+        => RenderEditForm(routePrefix, entity, model, isCreate, errors, null, submittedValues, fieldOptions);
 
-    public string RenderEditForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, object? key, IReadOnlyDictionary<string, string?>? submittedValues = null)
+    public string RenderEditForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, object? key, IReadOnlyDictionary<string, string?>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
     {
         var action = isCreate
             ? $"{routePrefix}/{entity.RouteName}"
@@ -79,29 +79,97 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             }
         }
 
-        var editableProperties = isCreate ? entity.CreateEditableProperties : entity.UpdateEditableProperties;
-
-        foreach (var property in editableProperties)
+        if (!isCreate)
         {
-            string value;
-            if (submittedValues is not null && submittedValues.TryGetValue(property.Name, out var submittedValue))
-            {
-                value = submittedValue ?? string.Empty;
-            }
-            else
-            {
-                value = model is null
-                    ? string.Empty
-                    : FormatValue(model.GetType().GetProperty(property.Name)?.GetValue(model));
-            }
+            var keyValue = model is null
+                ? FormatValue(key)
+                : FormatValue(model.GetType().GetProperty(entity.PrimaryKeyProperty.Name)?.GetValue(model));
 
-            html.Append($"<label>{WebUtility.HtmlEncode(property.Name)}</label>");
-            html.Append($"<input name=\"{property.Name}\" value=\"{WebUtility.HtmlEncode(value)}\" />");
+            html.Append($"<div><label>{WebUtility.HtmlEncode(entity.PrimaryKeyProperty.Name)}</label><span>{WebUtility.HtmlEncode(keyValue)}</span></div>");
+        }
+
+        var editableFields = isCreate ? entity.CreateEditableFields : entity.UpdateEditableFields;
+
+        foreach (var field in editableFields)
+        {
+            html.Append($"<label>{WebUtility.HtmlEncode(field.Name)}</label>");
+
+            switch (field.Kind)
+            {
+                case EditableFieldKind.Reference:
+                    RenderReferenceField(html, field, model, submittedValues, fieldOptions);
+                    break;
+                case EditableFieldKind.Collection:
+                    RenderCollectionField(html, field, fieldOptions);
+                    break;
+                default:
+                    RenderScalarField(html, field, model, submittedValues);
+                    break;
+            }
         }
 
         html.Append("<button type=\"submit\">Save</button></form>");
         html.Append("</body></html>");
         return html.ToString();
+    }
+
+    private static void RenderScalarField(StringBuilder html, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string?>? submittedValues)
+    {
+        var propertyName = field.ScalarPropertyName ?? field.Name;
+        string value;
+        if (submittedValues is not null && submittedValues.TryGetValue(field.Name, out var submittedValue))
+        {
+            value = submittedValue ?? string.Empty;
+        }
+        else
+        {
+            value = model is null
+                ? string.Empty
+                : FormatValue(model.GetType().GetProperty(propertyName)?.GetValue(model));
+        }
+
+        html.Append($"<input name=\"{field.Name}\" value=\"{WebUtility.HtmlEncode(value)}\" />");
+    }
+
+    private static void RenderReferenceField(StringBuilder html, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string?>? submittedValues, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions)
+    {
+        var currentValue = submittedValues is not null && submittedValues.TryGetValue(field.Name, out var submittedValue)
+            ? submittedValue ?? string.Empty
+            : model is null
+                ? string.Empty
+                : FormatValue(model.GetType().GetProperty(field.ScalarPropertyName!)?.GetValue(model));
+
+        html.Append($"<select name=\"{field.Name}\">");
+        html.Append("<option value=\"\"></option>");
+
+        if (fieldOptions is not null && fieldOptions.TryGetValue(field.Name, out var options))
+        {
+            foreach (var option in options)
+            {
+                var selected = option.Selected || string.Equals(option.Value, currentValue, StringComparison.Ordinal)
+                    ? " selected"
+                    : string.Empty;
+                html.Append($"<option value=\"{WebUtility.HtmlEncode(option.Value)}\"{selected}>{WebUtility.HtmlEncode(option.Label)}</option>");
+            }
+        }
+
+        html.Append("</select>");
+    }
+
+    private static void RenderCollectionField(StringBuilder html, EditableFieldMetadata field, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions)
+    {
+        html.Append($"<select name=\"{field.Name}\" multiple>");
+
+        if (fieldOptions is not null && fieldOptions.TryGetValue(field.Name, out var options))
+        {
+            foreach (var option in options)
+            {
+                var selected = option.Selected ? " selected" : string.Empty;
+                html.Append($"<option value=\"{WebUtility.HtmlEncode(option.Value)}\"{selected}>{WebUtility.HtmlEncode(option.Label)}</option>");
+            }
+        }
+
+        html.Append("</select>");
     }
 
     private static string EscapeRouteSegment(object? value)

@@ -49,7 +49,7 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
-    public void RenderForm_includes_assigned_primary_key_on_create_but_not_on_update()
+    public void RenderForm_includes_assigned_primary_key_on_create_and_shows_it_read_only_on_update()
     {
         var sut = new HtmlPageRenderer();
         var tenantKey = AssignedKey("TenantKey", typeof(string));
@@ -72,8 +72,144 @@ public class HtmlPageRendererTests
         var updateHtml = sut.RenderEditForm("/efui", metadata, new TenantRow { TenantKey = "tenant-1", Name = "North" }, isCreate: false, errors: new Dictionary<string, string[]>(), key: "tenant-1");
 
         createHtml.Should().Contain("name=\"TenantKey\"");
+        updateHtml.Should().Contain("TenantKey");
+        updateHtml.Should().Contain(">tenant-1<");
         updateHtml.Should().NotContain("name=\"TenantKey\"");
         updateHtml.Should().Contain("name=\"Name\"");
+    }
+
+    [Fact]
+    public void RenderEditForm_shows_generated_primary_key_as_read_only()
+    {
+        var sut = new HtmlPageRenderer();
+        var metadata = new EntityMetadata(
+            "User",
+            "users",
+            typeof(UserRow),
+            PrimaryKey("Id", typeof(int)),
+            new[]
+            {
+                PrimaryKey("Id", typeof(int)),
+                Editable("Name", typeof(string))
+            },
+            new[]
+            {
+                Editable("Name", typeof(string))
+            });
+
+        var html = sut.RenderEditForm(
+            "/efui",
+            metadata,
+            new UserRow { Id = 7, Name = "Ada" },
+            isCreate: false,
+            errors: new Dictionary<string, string[]>(),
+            key: 7);
+
+        html.Should().Contain("Id");
+        html.Should().Contain(">7<");
+        html.Should().NotContain("name=\"Id\"");
+    }
+
+    [Fact]
+    public void RenderEditForm_renders_reference_fields_as_dropdowns()
+    {
+        var sut = new HtmlPageRenderer();
+        var metadata = new EntityMetadata(
+            "User",
+            "users",
+            typeof(UserRow),
+            PrimaryKey("Id", typeof(int)),
+            new[]
+            {
+                PrimaryKey("Id", typeof(int)),
+                Editable("Name", typeof(string)),
+                Editable("GroupId", typeof(int?))
+            },
+            new[]
+            {
+                Editable("Name", typeof(string)),
+                Editable("GroupId", typeof(int?))
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string)),
+                ReferenceField("Group", typeof(int?), typeof(TenantRow), isRequired: false)
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string)),
+                ReferenceField("Group", typeof(int?), typeof(TenantRow), isRequired: false)
+            });
+
+        var html = sut.RenderEditForm(
+            "/efui",
+            metadata,
+            new UserRow { Id = 7, Name = "Ada", GroupId = 2 },
+            isCreate: false,
+            errors: new Dictionary<string, string[]>(),
+            key: 7,
+            fieldOptions: new Dictionary<string, IReadOnlyList<RelatedEntityOption>>
+            {
+                ["Group"] =
+                [
+                    new RelatedEntityOption("1", "Admins"),
+                    new RelatedEntityOption("2", "Guests", Selected: true)
+                ]
+            });
+
+        html.Should().Contain("<select name=\"Group\"");
+        html.Should().Contain("<option value=\"1\">Admins</option>");
+        html.Should().Contain("<option value=\"2\" selected>Guests</option>");
+        html.Should().NotContain("name=\"GroupId\"");
+    }
+
+    [Fact]
+    public void RenderEditForm_renders_collection_fields_as_multi_selects()
+    {
+        var sut = new HtmlPageRenderer();
+        var metadata = new EntityMetadata(
+            "Playlist",
+            "playlists",
+            typeof(TenantRow),
+            PrimaryKey("TenantKey", typeof(string)),
+            new[]
+            {
+                AssignedKey("TenantKey", typeof(string)),
+                Editable("Name", typeof(string))
+            },
+            new[]
+            {
+                Editable("Name", typeof(string))
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string))
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string)),
+                CollectionField("Tracks", typeof(TenantRow))
+            });
+
+        var html = sut.RenderEditForm(
+            "/efui",
+            metadata,
+            new TenantRow { TenantKey = "playlist-1", Name = "North" },
+            isCreate: false,
+            errors: new Dictionary<string, string[]>(),
+            key: "playlist-1",
+            fieldOptions: new Dictionary<string, IReadOnlyList<RelatedEntityOption>>
+            {
+                ["Tracks"] =
+                [
+                    new RelatedEntityOption("1", "Track A", Selected: true),
+                    new RelatedEntityOption("2", "Track B")
+                ]
+            });
+
+        html.Should().Contain("<select name=\"Tracks\" multiple>");
+        html.Should().Contain("<option value=\"1\" selected>Track A</option>");
+        html.Should().Contain("<option value=\"2\">Track B</option>");
     }
 
     [Fact]
@@ -187,12 +323,22 @@ public class HtmlPageRendererTests
     private static EntityPropertyMetadata Editable(string name, Type clrType)
         => new(name, clrType, IsEditableOnCreate: true, IsEditableOnUpdate: true);
 
+    private static EditableFieldMetadata ScalarField(string name, Type clrType)
+        => new(name, EditableFieldKind.Scalar, clrType, name, null, null, false);
+
+    private static EditableFieldMetadata ReferenceField(string name, Type clrType, Type relatedClrType, bool isRequired)
+        => new(name, EditableFieldKind.Reference, clrType, $"{name}Id", name, relatedClrType, isRequired);
+
+    private static EditableFieldMetadata CollectionField(string name, Type relatedClrType)
+        => new(name, EditableFieldKind.Collection, typeof(string[]), null, name, relatedClrType, false);
+
     private sealed class UserRow
     {
         public int Id { get; init; }
         public string Name { get; init; } = string.Empty;
         public string Email { get; init; } = string.Empty;
         public DateTime CreatedAt { get; init; }
+        public int? GroupId { get; init; }
     }
 
     private sealed class TenantRow
