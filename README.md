@@ -17,7 +17,7 @@ Form behavior:
 - database-generated primary keys are hidden on create and shown read-only on edit
 - assigned primary keys stay editable on create and are shown read-only on edit
 - many-to-one relationships render as dropdowns
-- supported many-to-many skip navigations render as multi-selects
+- supported many-to-many skip navigations render as a filterable checkbox picker with client-side contains search
 
 To verify the sample host in production mode:
 

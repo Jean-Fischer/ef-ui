@@ -130,7 +130,13 @@ public static class EfUiApplicationBuilderExtensions
     private static async Task<IResult> CreateEntityAsync(EfUiOptions options, string entity, HttpRequest request, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
-        var values = await ReadFormAsync(request);
+        var metadata = GetEntityMetadata(dbContext, entity);
+        if (metadata is null)
+        {
+            return Results.NotFound();
+        }
+
+        var values = EnsureCollectionFieldsPresent(metadata, await ReadFormAsync(request), isCreate: true);
         var result = await CreateCrudService().CreateAsync(dbContext, entity, values);
 
         return result.IsSuccess
@@ -153,7 +159,7 @@ public static class EfUiApplicationBuilderExtensions
             return Results.NotFound();
         }
 
-        var values = await ReadFormAsync(request);
+        var values = EnsureCollectionFieldsPresent(metadata, await ReadFormAsync(request), isCreate: false);
         var result = await CreateCrudService().UpdateAsync(dbContext, entity, key, values);
 
         return result.IsSuccess
@@ -222,7 +228,7 @@ public static class EfUiApplicationBuilderExtensions
         return bindResult.IsSuccess ? bindResult.Value : null;
     }
 
-    private static IResult CreateFailureResult(string routePrefix, DbContext dbContext, string entity, CrudOperationResult result, object? key, bool isCreate, IReadOnlyDictionary<string, string?> submittedValues)
+    private static IResult CreateFailureResult(string routePrefix, DbContext dbContext, string entity, CrudOperationResult result, object? key, bool isCreate, IReadOnlyDictionary<string, string[]> submittedValues)
     {
         if (result.Errors.ContainsKey("entity") || result.Errors.ContainsKey("id"))
         {
@@ -253,7 +259,7 @@ public static class EfUiApplicationBuilderExtensions
         return Results.Content(html, HtmlContentType, statusCode: StatusCodes.Status400BadRequest);
     }
 
-    private static IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>> BuildFieldOptions(DbContext dbContext, EntityMetadata metadata, object? model, IReadOnlyDictionary<string, string?>? submittedValues)
+    private static IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>> BuildFieldOptions(DbContext dbContext, EntityMetadata metadata, object? model, IReadOnlyDictionary<string, string[]>? submittedValues)
     {
         var options = new Dictionary<string, IReadOnlyList<RelatedEntityOption>>(StringComparer.OrdinalIgnoreCase);
 
@@ -300,13 +306,13 @@ public static class EfUiApplicationBuilderExtensions
         return primaryKeyValue;
     }
 
-    private static HashSet<string> GetSelectedValues(DbContext dbContext, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string?>? submittedValues)
+    private static HashSet<string> GetSelectedValues(DbContext dbContext, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string[]>? submittedValues)
     {
         if (submittedValues is not null && submittedValues.TryGetValue(field.Name, out var submittedValue))
         {
-            return submittedValue?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-                       .ToHashSet(StringComparer.Ordinal)
-                   ?? [];
+            return submittedValue
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .ToHashSet(StringComparer.Ordinal);
         }
 
         if (model is null)
@@ -362,9 +368,26 @@ public static class EfUiApplicationBuilderExtensions
             _ => value.ToString() ?? string.Empty
         };
 
-    private static async Task<Dictionary<string, string?>> ReadFormAsync(HttpRequest request)
+    private static IReadOnlyDictionary<string, string[]> EnsureCollectionFieldsPresent(EntityMetadata metadata, Dictionary<string, string[]> submittedValues, bool isCreate)
+    {
+        var editableFields = isCreate ? metadata.CreateEditableFields : metadata.UpdateEditableFields;
+        foreach (var field in editableFields.Where(field => field.Kind == EditableFieldKind.Collection))
+        {
+            if (!submittedValues.ContainsKey(field.Name))
+            {
+                submittedValues[field.Name] = [];
+            }
+        }
+
+        return submittedValues;
+    }
+
+    private static async Task<Dictionary<string, string[]>> ReadFormAsync(HttpRequest request)
     {
         var form = await request.ReadFormAsync();
-        return form.ToDictionary(x => x.Key, x => (string?)x.Value.ToString(), StringComparer.OrdinalIgnoreCase);
+        return form.ToDictionary(
+            x => x.Key,
+            x => x.Value.Select(value => value ?? string.Empty).ToArray(),
+            StringComparer.OrdinalIgnoreCase);
     }
 }

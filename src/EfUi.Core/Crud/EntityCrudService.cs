@@ -6,7 +6,10 @@ namespace EfUi.Core.Crud;
 
 public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, IScalarValueBinder binder) : IEntityCrudService
 {
-    public async Task<CrudOperationResult> CreateAsync(DbContext dbContext, string entityRoute, IReadOnlyDictionary<string, string?> values)
+    public Task<CrudOperationResult> CreateAsync(DbContext dbContext, string entityRoute, IReadOnlyDictionary<string, string?> values)
+        => CreateAsync(dbContext, entityRoute, ToMultiValueDictionary(values));
+
+    public async Task<CrudOperationResult> CreateAsync(DbContext dbContext, string entityRoute, IReadOnlyDictionary<string, string[]> values)
     {
         var entity = ResolveEntity(dbContext, entityRoute, out var failure);
         if (entity is null)
@@ -25,7 +28,10 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         return await SaveChangesAsync(dbContext);
     }
 
-    public async Task<CrudOperationResult> UpdateAsync(DbContext dbContext, string entityRoute, object key, IReadOnlyDictionary<string, string?> values)
+    public Task<CrudOperationResult> UpdateAsync(DbContext dbContext, string entityRoute, object key, IReadOnlyDictionary<string, string?> values)
+        => UpdateAsync(dbContext, entityRoute, key, ToMultiValueDictionary(values));
+
+    public async Task<CrudOperationResult> UpdateAsync(DbContext dbContext, string entityRoute, object key, IReadOnlyDictionary<string, string[]> values)
     {
         var entity = ResolveEntity(dbContext, entityRoute, out var failure);
         if (entity is null)
@@ -94,24 +100,25 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         }
     }
 
-    private async Task<CrudOperationResult> ApplyValuesAsync(DbContext dbContext, object instance, IReadOnlyList<EditableFieldMetadata> fields, IReadOnlyDictionary<string, string?> values)
+    private async Task<CrudOperationResult> ApplyValuesAsync(DbContext dbContext, object instance, IReadOnlyList<EditableFieldMetadata> fields, IReadOnlyDictionary<string, string[]> values)
     {
         var boundValues = new List<(string PropertyName, object? Value)>();
-        var collectionFields = new List<(EditableFieldMetadata Field, string? RawValue)>();
+        var collectionFields = new List<(EditableFieldMetadata Field, IReadOnlyList<string> RawValues)>();
 
         foreach (var field in fields)
         {
-            if (!values.TryGetValue(field.Name, out var rawValue))
+            if (!values.TryGetValue(field.Name, out var rawValues))
             {
                 continue;
             }
 
             if (field.Kind == EditableFieldKind.Collection)
             {
-                collectionFields.Add((field, rawValue));
+                collectionFields.Add((field, rawValues));
                 continue;
             }
 
+            var rawValue = rawValues.FirstOrDefault();
             var propertyName = field.ScalarPropertyName ?? field.Name;
             var propertyInfo = instance.GetType().GetProperty(propertyName)!;
             var bindResult = binder.Bind(propertyInfo.PropertyType, rawValue);
@@ -130,7 +137,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
 
         foreach (var collectionField in collectionFields)
         {
-            var collectionResult = await ApplyCollectionFieldAsync(dbContext, instance, collectionField.Field, collectionField.RawValue);
+            var collectionResult = await ApplyCollectionFieldAsync(dbContext, instance, collectionField.Field, collectionField.RawValues);
             if (!collectionResult.IsSuccess)
             {
                 return collectionResult;
@@ -148,7 +155,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         }
     }
 
-    private async Task<CrudOperationResult> ApplyCollectionFieldAsync(DbContext dbContext, object instance, EditableFieldMetadata field, string? rawValue)
+    private async Task<CrudOperationResult> ApplyCollectionFieldAsync(DbContext dbContext, object instance, EditableFieldMetadata field, IReadOnlyList<string> rawValues)
     {
         if (field.NavigationPropertyName is null || field.RelatedClrType is null)
         {
@@ -162,12 +169,8 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
             return CrudOperationResult.Failure(field.Name, "Related entity must have a single primary key.");
         }
 
-        var selectedValues = string.IsNullOrWhiteSpace(rawValue)
-            ? []
-            : rawValue.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-
         var relatedEntities = new List<object>();
-        foreach (var selectedValue in selectedValues)
+        foreach (var selectedValue in rawValues.Where(value => !string.IsNullOrWhiteSpace(value)))
         {
             var bindResult = binder.Bind(keyProperty.ClrType, selectedValue);
             if (!bindResult.IsSuccess)
@@ -199,4 +202,10 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
 
         return CrudOperationResult.Success();
     }
+
+    private static IReadOnlyDictionary<string, string[]> ToMultiValueDictionary(IReadOnlyDictionary<string, string?> values)
+        => values.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value is null ? Array.Empty<string>() : [pair.Value],
+            StringComparer.OrdinalIgnoreCase);
 }

@@ -164,7 +164,7 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
-    public void RenderEditForm_renders_collection_fields_as_multi_selects()
+    public void RenderEditForm_renders_collection_fields_as_filterable_checkbox_picker()
     {
         var sut = new HtmlPageRenderer();
         var metadata = new EntityMetadata(
@@ -207,9 +207,13 @@ public class HtmlPageRendererTests
                 ]
             });
 
-        html.Should().Contain("<select name=\"Tracks\" multiple>");
-        html.Should().Contain("<option value=\"1\" selected>Track A</option>");
-        html.Should().Contain("<option value=\"2\">Track B</option>");
+        html.Should().Contain("type=\"search\"");
+        html.Should().Contain("name=\"Tracks\" type=\"checkbox\" value=\"1\" checked");
+        html.Should().Contain("name=\"Tracks\" type=\"checkbox\" value=\"2\"");
+        html.Should().Contain(">Track A<");
+        html.Should().Contain(">Track B<");
+        html.Should().Contain("efui-collection-picker");
+        html.Should().NotContain("<select name=\"Tracks\" multiple>");
     }
 
     [Fact]
@@ -242,11 +246,11 @@ public class HtmlPageRendererTests
             isCreate: false,
             errors: new Dictionary<string, string[]> { ["CreatedAt"] = new[] { "Invalid value." } },
             key: 7,
-            submittedValues: new Dictionary<string, string?>
+            submittedValues: new Dictionary<string, string[]>
             {
-                ["Name"] = "Edited",
-                ["Email"] = "edited@example.com",
-                ["CreatedAt"] = "not-a-date"
+                ["Name"] = ["Edited"],
+                ["Email"] = ["edited@example.com"],
+                ["CreatedAt"] = ["not-a-date"]
             });
 
         html.Should().Contain("name=\"Name\" value=\"Edited\"");

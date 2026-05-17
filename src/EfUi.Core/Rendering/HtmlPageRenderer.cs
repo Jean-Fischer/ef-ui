@@ -58,10 +58,10 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         return html.ToString();
     }
 
-    public string RenderForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, IReadOnlyDictionary<string, string?>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
+    public string RenderForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
         => RenderEditForm(routePrefix, entity, model, isCreate, errors, null, submittedValues, fieldOptions);
 
-    public string RenderEditForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, object? key, IReadOnlyDictionary<string, string?>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
+    public string RenderEditForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, object? key, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
     {
         var action = isCreate
             ? $"{routePrefix}/{entity.RouteName}"
@@ -108,18 +108,23 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             }
         }
 
+        if (editableFields.Any(field => field.Kind == EditableFieldKind.Collection))
+        {
+            RenderCollectionPickerScript(html);
+        }
+
         html.Append("<button type=\"submit\">Save</button></form>");
         html.Append("</body></html>");
         return html.ToString();
     }
 
-    private static void RenderScalarField(StringBuilder html, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string?>? submittedValues)
+    private static void RenderScalarField(StringBuilder html, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string[]>? submittedValues)
     {
         var propertyName = field.ScalarPropertyName ?? field.Name;
         string value;
         if (submittedValues is not null && submittedValues.TryGetValue(field.Name, out var submittedValue))
         {
-            value = submittedValue ?? string.Empty;
+            value = submittedValue.FirstOrDefault() ?? string.Empty;
         }
         else
         {
@@ -131,10 +136,10 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append($"<input name=\"{field.Name}\" value=\"{WebUtility.HtmlEncode(value)}\" />");
     }
 
-    private static void RenderReferenceField(StringBuilder html, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string?>? submittedValues, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions)
+    private static void RenderReferenceField(StringBuilder html, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string[]>? submittedValues, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions)
     {
         var currentValue = submittedValues is not null && submittedValues.TryGetValue(field.Name, out var submittedValue)
-            ? submittedValue ?? string.Empty
+            ? submittedValue.FirstOrDefault() ?? string.Empty
             : model is null
                 ? string.Empty
                 : FormatValue(model.GetType().GetProperty(field.ScalarPropertyName!)?.GetValue(model));
@@ -158,18 +163,44 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
     private static void RenderCollectionField(StringBuilder html, EditableFieldMetadata field, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions)
     {
-        html.Append($"<select name=\"{field.Name}\" multiple>");
+        var fieldName = WebUtility.HtmlEncode(field.Name);
+        html.Append($"<div class=\"efui-collection-picker\" data-field-name=\"{fieldName}\">");
+        html.Append($"<input type=\"search\" class=\"efui-collection-picker-search\" data-role=\"collection-filter\" data-target-field=\"{fieldName}\" placeholder=\"Filter {fieldName}...\" />");
+        html.Append("<div class=\"efui-collection-picker-options\" style=\"max-height: 12rem; overflow-y: auto; border: 1px solid #ccc; padding: 0.5rem;\">");
 
         if (fieldOptions is not null && fieldOptions.TryGetValue(field.Name, out var options))
         {
             foreach (var option in options)
             {
-                var selected = option.Selected ? " selected" : string.Empty;
-                html.Append($"<option value=\"{WebUtility.HtmlEncode(option.Value)}\"{selected}>{WebUtility.HtmlEncode(option.Label)}</option>");
+                var selected = option.Selected ? " checked" : string.Empty;
+                var encodedValue = WebUtility.HtmlEncode(option.Value);
+                var encodedLabel = WebUtility.HtmlEncode(option.Label);
+                var normalizedLabel = WebUtility.HtmlEncode(option.Label.ToLowerInvariant());
+                html.Append($"<label class=\"efui-collection-picker-option\" data-search-text=\"{normalizedLabel}\" style=\"display:block; margin-bottom:0.25rem;\">");
+                html.Append($"<input name=\"{fieldName}\" type=\"checkbox\" value=\"{encodedValue}\"{selected} /> <span>{encodedLabel}</span>");
+                html.Append("</label>");
             }
         }
 
-        html.Append("</select>");
+        html.Append("</div></div>");
+    }
+
+    private static void RenderCollectionPickerScript(StringBuilder html)
+    {
+        html.Append("<script>");
+        html.Append("document.addEventListener('input',function(event){");
+        html.Append("if(!(event.target instanceof HTMLInputElement)||event.target.dataset.role!=='collection-filter'){return;}");
+        html.Append("var query=event.target.value.toLowerCase();");
+        html.Append("var picker=event.target.closest('.efui-collection-picker');");
+        html.Append("if(!picker){return;}");
+        html.Append("picker.querySelectorAll('.efui-collection-picker-option').forEach(function(option){");
+        html.Append("var checkbox=option.querySelector('input[type=checkbox]');");
+        html.Append("if(!(checkbox instanceof HTMLInputElement)){return;}");
+        html.Append("var matches=(option.dataset.searchText||'').indexOf(query)!==-1;");
+        html.Append("option.style.display=checkbox.checked||matches?'block':'none';");
+        html.Append("});");
+        html.Append("});");
+        html.Append("</script>");
     }
 
     private static string EscapeRouteSegment(object? value)

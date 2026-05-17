@@ -217,7 +217,7 @@ public class EntityCrudServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_reconciles_supported_many_to_many_collection()
+    public async Task UpdateAsync_reconciles_supported_many_to_many_collection_from_repeated_values()
     {
         await using var db = await CreateManyToManyDbAsync();
 
@@ -232,15 +232,41 @@ public class EntityCrudServiceTests
 
         var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
 
-        var result = await sut.UpdateAsync(db, "playlists", playlist.Id, new Dictionary<string, string?>
+        var result = await sut.UpdateAsync(db, "playlists", playlist.Id, new Dictionary<string, string[]>
         {
-            ["Tracks"] = "2,3"
+            ["Tracks"] = ["2", "3"]
         });
 
         result.IsSuccess.Should().BeTrue();
 
         var updated = await db.Playlists.Include(x => x.Tracks).SingleAsync();
         updated.Tracks.Select(x => x.Id).Should().BeEquivalentTo([2, 3]);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_clears_supported_many_to_many_collection_when_no_values_are_posted()
+    {
+        await using var db = await CreateManyToManyDbAsync();
+
+        var track1 = new PlaylistTrackItem { Name = "Track A" };
+        var track2 = new PlaylistTrackItem { Name = "Track B" };
+        var playlist = new PlaylistWithTracks { Name = "Favorites", Tracks = [track1, track2] };
+
+        db.Tracks.AddRange(track1, track2);
+        db.Playlists.Add(playlist);
+        await db.SaveChangesAsync();
+
+        var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+
+        var result = await sut.UpdateAsync(db, "playlists", playlist.Id, new Dictionary<string, string[]>
+        {
+            ["Tracks"] = []
+        });
+
+        result.IsSuccess.Should().BeTrue();
+
+        var updated = await db.Playlists.Include(x => x.Tracks).SingleAsync();
+        updated.Tracks.Should().BeEmpty();
     }
 
     private static async Task<SampleModelDbContext> CreateDbAsync()
