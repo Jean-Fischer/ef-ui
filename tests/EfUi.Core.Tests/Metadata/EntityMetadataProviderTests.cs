@@ -20,6 +20,18 @@ public class EntityMetadataProviderTests
     }
 
     [Fact]
+    public void GetEntities_uses_table_names_instead_of_dbset_property_names_for_routes()
+    {
+        using var db = CreateRouteNameDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var entities = sut.GetEntities(db).Select(x => x.RouteName).ToList();
+
+        entities.Should().Contain("app_users");
+        entities.Should().NotContain("accounts");
+    }
+
+    [Fact]
     public void Editable_properties_exclude_key_and_navigation_properties()
     {
         using var db = CreateDb();
@@ -41,5 +53,27 @@ public class EntityMetadataProviderTests
         db.Database.OpenConnection();
         db.Database.EnsureCreated();
         return db;
+    }
+
+    private static RouteNameDbContext CreateRouteNameDb()
+    {
+        var options = new DbContextOptionsBuilder<RouteNameDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        var db = new RouteNameDbContext(options);
+        db.Database.OpenConnection();
+        db.Database.EnsureCreated();
+        return db;
+    }
+
+    private sealed class RouteNameDbContext(DbContextOptions<RouteNameDbContext> options) : DbContext(options)
+    {
+        public DbSet<User> Accounts => Set<User>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<User>().ToTable("app_users");
+        }
     }
 }
