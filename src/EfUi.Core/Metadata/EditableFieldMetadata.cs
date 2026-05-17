@@ -14,4 +14,5 @@ public sealed record EditableFieldMetadata(
     string? ScalarPropertyName,
     string? NavigationPropertyName,
     Type? RelatedClrType,
-    bool IsRequired);
+    bool IsRequired,
+    CollectionRelationshipKind CollectionRelationshipKind = CollectionRelationshipKind.None);

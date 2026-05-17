@@ -65,8 +65,40 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 null,
                 navigation.Name,
                 navigation.TargetEntityType.ClrType,
-                false))
+                false,
+                CollectionRelationshipKind.ManyToMany))
             .ToList();
+
+        var oneToManyFields = new List<EditableFieldMetadata>();
+        var relatedManagementLinks = new List<RelatedEntityManagementLink>();
+
+        foreach (var navigation in entityType.GetNavigations().Where(navigation => navigation.IsCollection))
+        {
+            var classification = ClassifyCollectionNavigation(entityType, navigation);
+            if (classification is null)
+            {
+                continue;
+            }
+
+            if (classification.IsManagementLink)
+            {
+                relatedManagementLinks.Add(new RelatedEntityManagementLink(
+                    navigation.Name,
+                    GetRouteName(navigation.TargetEntityType),
+                    navigation.TargetEntityType.ClrType));
+                continue;
+            }
+
+            oneToManyFields.Add(new EditableFieldMetadata(
+                navigation.Name,
+                EditableFieldKind.Collection,
+                typeof(string[]),
+                classification.ForeignKey!.Properties[0].Name,
+                navigation.Name,
+                navigation.TargetEntityType.ClrType,
+                !IsNullable(classification.ForeignKey.Properties[0].ClrType),
+                CollectionRelationshipKind.OneToMany));
+        }
 
         var primaryKeyMetadata = scalarProperties.Single(property => property.IsPrimaryKey);
         var editableProperties = scalarProperties.Where(x => x.IsEditableOnUpdate).ToList();
@@ -101,6 +133,7 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                     field.RelatedClrType,
                     !IsNullable(field.Property.ClrType))))
             .Concat(collectionFields)
+            .Concat(oneToManyFields)
             .ToList();
 
         return new EntityMetadata(
@@ -111,8 +144,36 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             scalarProperties,
             editableProperties,
             createEditableFields,
-            updateEditableFields);
+            updateEditableFields,
+            relatedManagementLinks);
     }
+
+    private static CollectionNavigationClassification? ClassifyCollectionNavigation(IEntityType entityType, INavigation navigation)
+    {
+        var matchingForeignKeys = navigation.TargetEntityType.GetForeignKeys()
+            .Where(foreignKey => foreignKey.PrincipalEntityType == entityType)
+            .Where(foreignKey => foreignKey.Properties.Count == 1)
+            .Where(foreignKey => foreignKey.PrincipalToDependent?.Name == navigation.Name)
+            .ToList();
+
+        if (matchingForeignKeys.Count != 1)
+        {
+            return null;
+        }
+
+        var foreignKey = matchingForeignKeys[0];
+        var hasForeignKeyToDifferentPrincipal = navigation.TargetEntityType.GetForeignKeys()
+            .Any(candidate => candidate != foreignKey && candidate.PrincipalEntityType != entityType);
+
+        if (hasForeignKeyToDifferentPrincipal)
+        {
+            return new CollectionNavigationClassification(foreignKey, IsManagementLink: true);
+        }
+
+        return new CollectionNavigationClassification(foreignKey, IsManagementLink: false);
+    }
+
+    private sealed record CollectionNavigationClassification(IForeignKey ForeignKey, bool IsManagementLink);
 
     private static EditableFieldMetadata CreateScalarField(EntityPropertyMetadata property)
         => new(

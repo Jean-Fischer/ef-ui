@@ -36,7 +36,8 @@ public sealed record EntityMetadata
                     null,
                     null,
                     false))
-                .ToList())
+                .ToList(),
+            [])
     {
     }
 
@@ -48,7 +49,8 @@ public sealed record EntityMetadata
         IReadOnlyList<EntityPropertyMetadata> allProperties,
         IReadOnlyList<EntityPropertyMetadata> editableProperties,
         IReadOnlyList<EditableFieldMetadata> createEditableFields,
-        IReadOnlyList<EditableFieldMetadata> updateEditableFields)
+        IReadOnlyList<EditableFieldMetadata> updateEditableFields,
+        IReadOnlyList<RelatedEntityManagementLink>? relatedManagementLinks = null)
     {
         DisplayName = displayName;
         RouteName = routeName;
@@ -60,6 +62,7 @@ public sealed record EntityMetadata
         UpdateEditableProperties = editableProperties;
         CreateEditableFields = createEditableFields;
         UpdateEditableFields = updateEditableFields;
+        RelatedManagementLinks = relatedManagementLinks ?? [];
     }
 
     public string DisplayName { get; }
@@ -72,4 +75,5 @@ public sealed record EntityMetadata
     public IReadOnlyList<EntityPropertyMetadata> UpdateEditableProperties { get; }
     public IReadOnlyList<EditableFieldMetadata> CreateEditableFields { get; }
     public IReadOnlyList<EditableFieldMetadata> UpdateEditableFields { get; }
+    public IReadOnlyList<RelatedEntityManagementLink> RelatedManagementLinks { get; }
 }
