@@ -3,6 +3,7 @@ using EfUi.Core.Crud;
 using EfUi.Core.Metadata;
 using EfUi.Core.Tests.TestDoubles;
 using FluentAssertions;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -141,6 +142,33 @@ public class EntityCrudServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_returns_failure_for_duplicate_assigned_primary_key()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        await using (var seedDb = await CreateAssignedKeyDbAsync(connection))
+        {
+            seedDb.Tenants.Add(new AssignedKeyTenant { TenantKey = "tenant-north", Name = "North" });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var db = await CreateAssignedKeyDbAsync(connection);
+        var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+
+        var result = await sut.CreateAsync(db, "tenants", new Dictionary<string, string?>
+        {
+            ["TenantKey"] = "tenant-north",
+            ["Name"] = "Duplicate North"
+        });
+
+        result.IsSuccess.Should().BeFalse();
+        result.Errors.Should().ContainKey("persistence");
+        result.Errors["persistence"].Should().ContainSingle().Which.Should().Be("Could not save changes.");
+        (await db.Tenants.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
     public async Task UpdateAsync_does_not_allow_primary_key_edits_for_assigned_key_entities()
     {
         await using var db = await CreateAssignedKeyDbAsync();
@@ -177,18 +205,29 @@ public class EntityCrudServiceTests
 
     private static async Task<AssignedKeyDbContext> CreateAssignedKeyDbAsync()
     {
+        var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        return await CreateAssignedKeyDbAsync(connection, ownsConnection: true);
+    }
+
+    private static async Task<AssignedKeyDbContext> CreateAssignedKeyDbAsync(SqliteConnection connection, bool ownsConnection = false)
+    {
         var options = new DbContextOptionsBuilder<AssignedKeyDbContext>()
-            .UseSqlite("Data Source=:memory:")
+            .UseSqlite(connection)
             .Options;
 
-        var db = new AssignedKeyDbContext(options);
-        await db.Database.OpenConnectionAsync();
+        var db = new AssignedKeyDbContext(options, ownsConnection ? connection : null);
         await db.Database.EnsureCreatedAsync();
         return db;
     }
 
-    private sealed class AssignedKeyDbContext(DbContextOptions<AssignedKeyDbContext> options) : DbContext(options)
+    private static Task<AssignedKeyDbContext> CreateAssignedKeyDbAsync(SqliteConnection connection)
+        => CreateAssignedKeyDbAsync(connection, ownsConnection: false);
+
+    private sealed class AssignedKeyDbContext(DbContextOptions<AssignedKeyDbContext> options, SqliteConnection? ownedConnection = null) : DbContext(options)
     {
+        private readonly SqliteConnection? _ownedConnection = ownedConnection;
+
         public DbSet<AssignedKeyTenant> Tenants => Set<AssignedKeyTenant>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -200,6 +239,21 @@ public class EntityCrudServiceTests
                 builder.Property(x => x.TenantKey).ValueGeneratedNever();
                 builder.Property(x => x.Name).IsRequired();
             });
+        }
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            _ownedConnection?.Dispose();
+        }
+
+        public override async ValueTask DisposeAsync()
+        {
+            await base.DisposeAsync();
+            if (_ownedConnection is not null)
+            {
+                await _ownedConnection.DisposeAsync();
+            }
         }
     }
 

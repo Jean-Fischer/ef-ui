@@ -37,6 +37,24 @@ public sealed class EscapedStringKeyRoutingTests
     }
 
     [Fact]
+    public async Task Post_create_duplicate_assigned_string_key_returns_bad_request_with_preserved_values()
+    {
+        await using var host = await StringKeyEfUiTestHost.CreateAsync();
+
+        var response = await host.Client.PostAsync("/efui/tenants", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["TenantKey"] = "tenant north?1",
+            ["Name"] = "Duplicate North"
+        }));
+
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+        var html = await response.Content.ReadAsStringAsync();
+        html.Should().Contain("Could not save changes.");
+        html.Should().Contain("name=\"TenantKey\" value=\"tenant north?1\"");
+        html.Should().Contain("name=\"Name\" value=\"Duplicate North\"");
+    }
+
+    [Fact]
     public async Task Post_update_with_escaped_string_key_survives_routing_and_binding_without_showing_key_as_editable()
     {
         await using var host = await StringKeyEfUiTestHost.CreateAsync();

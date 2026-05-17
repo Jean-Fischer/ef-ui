@@ -22,8 +22,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         }
 
         dbContext.Add(instance);
-        await dbContext.SaveChangesAsync();
-        return CrudOperationResult.Success();
+        return await SaveChangesAsync(dbContext);
     }
 
     public async Task<CrudOperationResult> UpdateAsync(DbContext dbContext, string entityRoute, object key, IReadOnlyDictionary<string, string?> values)
@@ -46,8 +45,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
             return applyResult;
         }
 
-        await dbContext.SaveChangesAsync();
-        return CrudOperationResult.Success();
+        return await SaveChangesAsync(dbContext);
     }
 
     public async Task<CrudOperationResult> DeleteAsync(DbContext dbContext, string entityRoute, object key)
@@ -65,8 +63,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         }
 
         dbContext.Remove(instance);
-        await dbContext.SaveChangesAsync();
-        return CrudOperationResult.Success();
+        return await SaveChangesAsync(dbContext);
     }
 
     private EntityMetadata? ResolveEntity(DbContext dbContext, string entityRoute, out CrudOperationResult? failure)
@@ -80,6 +77,19 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
 
         failure = null;
         return entity;
+    }
+
+    private static async Task<CrudOperationResult> SaveChangesAsync(DbContext dbContext)
+    {
+        try
+        {
+            await dbContext.SaveChangesAsync();
+            return CrudOperationResult.Success();
+        }
+        catch (DbUpdateException)
+        {
+            return CrudOperationResult.Failure("persistence", "Could not save changes.");
+        }
     }
 
     private CrudOperationResult ApplyValues(object instance, IReadOnlyList<EntityPropertyMetadata> properties, IReadOnlyDictionary<string, string?> values)
