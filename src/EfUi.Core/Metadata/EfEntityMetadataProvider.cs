@@ -28,7 +28,8 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             .Select(property => new EntityPropertyMetadata(
                 property.Name,
                 property.ClrType,
-                IsEditable(property),
+                IsEditableOnCreate(property),
+                IsEditableOnUpdate(property),
                 property.Name == keyProperty.Name))
             .ToList();
 
@@ -40,7 +41,7 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             entityType.ClrType,
             primaryKeyMetadata,
             scalarProperties,
-            scalarProperties.Where(x => x.IsEditable).ToList());
+            scalarProperties.Where(x => x.IsEditableOnUpdate).ToList());
     }
 
     private static string GetRouteName(IEntityType entityType)
@@ -50,9 +51,22 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             .ToLowerInvariant();
     }
 
-    private static bool IsEditable(IProperty property)
+    private static bool IsEditableOnCreate(IProperty property)
+    {
+        if (!CanUserEdit(property))
+        {
+            return false;
+        }
+
+        return !property.IsPrimaryKey() || property.ValueGenerated == ValueGenerated.Never;
+    }
+
+    private static bool IsEditableOnUpdate(IProperty property)
         => !property.IsPrimaryKey()
-           && !property.IsShadowProperty()
+           && CanUserEdit(property);
+
+    private static bool CanUserEdit(IProperty property)
+        => !property.IsShadowProperty()
            && property.PropertyInfo?.SetMethod is not null
            && IsSupportedScalar(property.ClrType);
 

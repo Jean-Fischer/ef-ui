@@ -13,8 +13,8 @@ public class HtmlPageRendererTests
         var sut = new HtmlPageRenderer();
         var entities = new[]
         {
-            new EntityMetadata("User", "users", typeof(object), new EntityPropertyMetadata("Id", typeof(int), false, true), Array.Empty<EntityPropertyMetadata>(), Array.Empty<EntityPropertyMetadata>()),
-            new EntityMetadata("Group", "groups", typeof(object), new EntityPropertyMetadata("Id", typeof(int), false, true), Array.Empty<EntityPropertyMetadata>(), Array.Empty<EntityPropertyMetadata>())
+            new EntityMetadata("User", "users", typeof(object), PrimaryKey("Id", typeof(int)), Array.Empty<EntityPropertyMetadata>(), Array.Empty<EntityPropertyMetadata>()),
+            new EntityMetadata("Group", "groups", typeof(object), PrimaryKey("Id", typeof(int)), Array.Empty<EntityPropertyMetadata>(), Array.Empty<EntityPropertyMetadata>())
         };
 
         var html = sut.RenderIndex("/efui", entities);
@@ -24,28 +24,56 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
-    public void RenderForm_omits_read_only_fields()
+    public void RenderForm_omits_store_generated_primary_key_fields_on_create()
     {
         var sut = new HtmlPageRenderer();
         var metadata = new EntityMetadata(
             "User",
             "users",
             typeof(object),
-            new EntityPropertyMetadata("Id", typeof(int), false, true),
+            PrimaryKey("Id", typeof(int)),
             new[]
             {
-                new EntityPropertyMetadata("Id", typeof(int), false, true),
-                new EntityPropertyMetadata("Name", typeof(string), true)
+                PrimaryKey("Id", typeof(int)),
+                Editable("Name", typeof(string))
             },
             new[]
             {
-                new EntityPropertyMetadata("Name", typeof(string), true)
+                Editable("Name", typeof(string))
             });
 
         var html = sut.RenderForm("/efui", metadata, null, isCreate: true, errors: new Dictionary<string, string[]>());
 
         html.Should().Contain("name=\"Name\"");
         html.Should().NotContain("name=\"Id\"");
+    }
+
+    [Fact]
+    public void RenderForm_includes_assigned_primary_key_on_create_but_not_on_update()
+    {
+        var sut = new HtmlPageRenderer();
+        var tenantKey = AssignedKey("TenantKey", typeof(string));
+        var metadata = new EntityMetadata(
+            "Tenant",
+            "tenants",
+            typeof(TenantRow),
+            tenantKey,
+            new[]
+            {
+                tenantKey,
+                Editable("Name", typeof(string))
+            },
+            new[]
+            {
+                Editable("Name", typeof(string))
+            });
+
+        var createHtml = sut.RenderForm("/efui", metadata, null, isCreate: true, errors: new Dictionary<string, string[]>());
+        var updateHtml = sut.RenderEditForm("/efui", metadata, new TenantRow { TenantKey = "tenant-1", Name = "North" }, isCreate: false, errors: new Dictionary<string, string[]>(), key: "tenant-1");
+
+        createHtml.Should().Contain("name=\"TenantKey\"");
+        updateHtml.Should().NotContain("name=\"TenantKey\"");
+        updateHtml.Should().Contain("name=\"Name\"");
     }
 
     [Fact]
@@ -56,19 +84,19 @@ public class HtmlPageRendererTests
             "User",
             "users",
             typeof(UserRow),
-            new EntityPropertyMetadata("Id", typeof(int), false, true),
+            PrimaryKey("Id", typeof(int)),
             new[]
             {
-                new EntityPropertyMetadata("Id", typeof(int), false, true),
-                new EntityPropertyMetadata("Name", typeof(string), true),
-                new EntityPropertyMetadata("Email", typeof(string), true),
-                new EntityPropertyMetadata("CreatedAt", typeof(DateTime), true)
+                PrimaryKey("Id", typeof(int)),
+                Editable("Name", typeof(string)),
+                Editable("Email", typeof(string)),
+                Editable("CreatedAt", typeof(DateTime))
             },
             new[]
             {
-                new EntityPropertyMetadata("Name", typeof(string), true),
-                new EntityPropertyMetadata("Email", typeof(string), true),
-                new EntityPropertyMetadata("CreatedAt", typeof(DateTime), true)
+                Editable("Name", typeof(string)),
+                Editable("Email", typeof(string)),
+                Editable("CreatedAt", typeof(DateTime))
             });
 
         var html = sut.RenderEditForm(
@@ -95,21 +123,22 @@ public class HtmlPageRendererTests
     public void RenderList_uri_escapes_primary_key_values_in_action_links()
     {
         var sut = new HtmlPageRenderer();
+        var tenantKey = AssignedKey("TenantKey", typeof(string));
         var metadata = new EntityMetadata(
             "Tenant",
             "tenants",
             typeof(TenantRow),
-            new EntityPropertyMetadata("TenantKey", typeof(string), false, true),
+            tenantKey,
             new[]
             {
-                new EntityPropertyMetadata("TenantKey", typeof(string), false, true),
-                new EntityPropertyMetadata("GroupId", typeof(int), true),
-                new EntityPropertyMetadata("Name", typeof(string), true)
+                tenantKey,
+                Editable("GroupId", typeof(int)),
+                Editable("Name", typeof(string))
             },
             new[]
             {
-                new EntityPropertyMetadata("GroupId", typeof(int), true),
-                new EntityPropertyMetadata("Name", typeof(string), true)
+                Editable("GroupId", typeof(int)),
+                Editable("Name", typeof(string))
             });
 
         var html = sut.RenderList("/efui", metadata, new object[]
@@ -127,19 +156,20 @@ public class HtmlPageRendererTests
     public void RenderEditForm_uri_escapes_primary_key_values_in_action_url()
     {
         var sut = new HtmlPageRenderer();
+        var tenantKey = AssignedKey("TenantKey", typeof(string));
         var metadata = new EntityMetadata(
             "Tenant",
             "tenants",
             typeof(TenantRow),
-            new EntityPropertyMetadata("TenantKey", typeof(string), false, true),
+            tenantKey,
             new[]
             {
-                new EntityPropertyMetadata("TenantKey", typeof(string), false, true),
-                new EntityPropertyMetadata("Name", typeof(string), true)
+                tenantKey,
+                Editable("Name", typeof(string))
             },
             new[]
             {
-                new EntityPropertyMetadata("Name", typeof(string), true)
+                Editable("Name", typeof(string))
             });
 
         var html = sut.RenderEditForm("/efui", metadata, new TenantRow { TenantKey = "tenant / north?1", Name = "North" }, isCreate: false, errors: new Dictionary<string, string[]>(), key: "tenant / north?1");
@@ -147,6 +177,15 @@ public class HtmlPageRendererTests
         html.Should().Contain("action=\"/efui/tenants/tenant%20%2F%20north%3F1\"");
         html.Should().NotContain("action=\"/efui/tenants/tenant / north?1\"");
     }
+
+    private static EntityPropertyMetadata PrimaryKey(string name, Type clrType)
+        => new(name, clrType, IsEditableOnCreate: false, IsEditableOnUpdate: false, IsPrimaryKey: true);
+
+    private static EntityPropertyMetadata AssignedKey(string name, Type clrType)
+        => new(name, clrType, IsEditableOnCreate: true, IsEditableOnUpdate: false, IsPrimaryKey: true);
+
+    private static EntityPropertyMetadata Editable(string name, Type clrType)
+        => new(name, clrType, IsEditableOnCreate: true, IsEditableOnUpdate: true);
 
     private sealed class UserRow
     {

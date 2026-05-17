@@ -122,6 +122,45 @@ public class EntityCrudServiceTests
         result.Which.Errors["entity"].Should().ContainSingle().Which.Should().Contain("missing-entities");
     }
 
+    [Fact]
+    public async Task CreateAsync_persists_assigned_primary_key_values_for_non_generated_keys()
+    {
+        await using var db = await CreateAssignedKeyDbAsync();
+        var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+
+        var result = await sut.CreateAsync(db, "tenants", new Dictionary<string, string?>
+        {
+            ["TenantKey"] = "tenant-south",
+            ["Name"] = "South"
+        });
+
+        result.IsSuccess.Should().BeTrue();
+        var tenant = await db.Tenants.SingleAsync();
+        tenant.TenantKey.Should().Be("tenant-south");
+        tenant.Name.Should().Be("South");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_does_not_allow_primary_key_edits_for_assigned_key_entities()
+    {
+        await using var db = await CreateAssignedKeyDbAsync();
+        db.Tenants.Add(new AssignedKeyTenant { TenantKey = "tenant-north", Name = "North" });
+        await db.SaveChangesAsync();
+
+        var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+
+        var result = await sut.UpdateAsync(db, "tenants", "tenant-north", new Dictionary<string, string?>
+        {
+            ["TenantKey"] = "tenant-south",
+            ["Name"] = "North Updated"
+        });
+
+        result.IsSuccess.Should().BeTrue();
+        var tenant = await db.Tenants.SingleAsync();
+        tenant.TenantKey.Should().Be("tenant-north");
+        tenant.Name.Should().Be("North Updated");
+    }
+
     private static async Task<SampleModelDbContext> CreateDbAsync()
     {
         var options = new DbContextOptionsBuilder<SampleModelDbContext>()
@@ -134,5 +173,40 @@ public class EntityCrudServiceTests
         db.Groups.Add(new Group { Name = "Admins" });
         await db.SaveChangesAsync();
         return db;
+    }
+
+    private static async Task<AssignedKeyDbContext> CreateAssignedKeyDbAsync()
+    {
+        var options = new DbContextOptionsBuilder<AssignedKeyDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        var db = new AssignedKeyDbContext(options);
+        await db.Database.OpenConnectionAsync();
+        await db.Database.EnsureCreatedAsync();
+        return db;
+    }
+
+    private sealed class AssignedKeyDbContext(DbContextOptions<AssignedKeyDbContext> options) : DbContext(options)
+    {
+        public DbSet<AssignedKeyTenant> Tenants => Set<AssignedKeyTenant>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<AssignedKeyTenant>(builder =>
+            {
+                builder.ToTable("tenants");
+                builder.HasKey(x => x.TenantKey);
+                builder.Property(x => x.TenantKey).ValueGeneratedNever();
+                builder.Property(x => x.Name).IsRequired();
+            });
+        }
+    }
+
+    private sealed class AssignedKeyTenant
+    {
+        public string TenantKey { get; set; } = string.Empty;
+
+        public string Name { get; set; } = string.Empty;
     }
 }

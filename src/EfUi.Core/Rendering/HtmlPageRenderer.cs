@@ -79,7 +79,9 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             }
         }
 
-        foreach (var property in entity.EditableProperties)
+        var editableProperties = isCreate ? entity.CreateEditableProperties : entity.UpdateEditableProperties;
+
+        foreach (var property in editableProperties)
         {
             string value;
             if (submittedValues is not null && submittedValues.TryGetValue(property.Name, out var submittedValue))

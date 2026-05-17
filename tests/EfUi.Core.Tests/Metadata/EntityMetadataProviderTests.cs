@@ -44,6 +44,18 @@ public class EntityMetadataProviderTests
     }
 
     [Fact]
+    public void Assigned_primary_key_is_createable_but_not_updateable()
+    {
+        using var db = CreateAlternateKeyDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var tenant = sut.GetEntity(db, "tenants");
+
+        tenant.CreateEditableProperties.Select(x => x.Name).Should().Contain("TenantKey");
+        tenant.UpdateEditableProperties.Select(x => x.Name).Should().NotContain("TenantKey");
+    }
+
+    [Fact]
     public void Editable_properties_exclude_key_and_navigation_properties()
     {
         using var db = CreateDb();
@@ -137,7 +149,11 @@ public class EntityMetadataProviderTests
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<Tenant>().HasKey(x => x.TenantKey);
+            modelBuilder.Entity<Tenant>(builder =>
+            {
+                builder.HasKey(x => x.TenantKey);
+                builder.Property(x => x.TenantKey).ValueGeneratedNever();
+            });
         }
     }
 

@@ -13,16 +13,42 @@ namespace EfUi.AspNetCore.Tests;
 public sealed class EscapedStringKeyRoutingTests
 {
     [Fact]
-    public async Task Post_update_with_escaped_string_key_survives_routing_and_binding()
+    public async Task Get_create_form_and_post_create_support_assigned_string_keys()
+    {
+        await using var host = await StringKeyEfUiTestHost.CreateAsync();
+
+        var createHtml = await host.Client.GetStringAsync("/efui/tenants/new");
+        createHtml.Should().Contain("name=\"TenantKey\"");
+        createHtml.Should().Contain("name=\"Name\"");
+
+        var response = await host.Client.PostAsync("/efui/tenants", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["TenantKey"] = "tenant south?2",
+            ["Name"] = "South"
+        }));
+
+        response.StatusCode.Should().BeOneOf(System.Net.HttpStatusCode.Redirect, System.Net.HttpStatusCode.SeeOther);
+        response.Headers.Location.Should().NotBeNull();
+        response.Headers.Location!.ToString().Should().Be("/efui/tenants");
+
+        var listHtml = await host.Client.GetStringAsync("/efui/tenants");
+        listHtml.Should().Contain("South");
+        listHtml.Should().Contain("/efui/tenants/tenant%20south%3F2/edit");
+    }
+
+    [Fact]
+    public async Task Post_update_with_escaped_string_key_survives_routing_and_binding_without_showing_key_as_editable()
     {
         await using var host = await StringKeyEfUiTestHost.CreateAsync();
 
         var getHtml = await host.Client.GetStringAsync("/efui/tenants/tenant%20north%3F1/edit");
         getHtml.Should().Contain("action=\"/efui/tenants/tenant%20north%3F1\"");
         getHtml.Should().Contain("name=\"Name\" value=\"North\"");
+        getHtml.Should().NotContain("name=\"TenantKey\"");
 
         var response = await host.Client.PostAsync("/efui/tenants/tenant%20north%3F1", new FormUrlEncodedContent(new Dictionary<string, string>
         {
+            ["TenantKey"] = "tenant south?2",
             ["Name"] = "North Updated"
         }));
 
@@ -33,6 +59,7 @@ public sealed class EscapedStringKeyRoutingTests
         var listHtml = await host.Client.GetStringAsync("/efui/tenants");
         listHtml.Should().Contain("North Updated");
         listHtml.Should().Contain("/efui/tenants/tenant%20north%3F1/edit");
+        listHtml.Should().NotContain("/efui/tenants/tenant%20south%3F2/edit\">North Updated");
     }
 
     private sealed class StringKeyEfUiTestHost : IAsyncDisposable

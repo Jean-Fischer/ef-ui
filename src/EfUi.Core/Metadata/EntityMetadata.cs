@@ -6,4 +6,9 @@ public sealed record EntityMetadata(
     Type ClrType,
     EntityPropertyMetadata PrimaryKeyProperty,
     IReadOnlyList<EntityPropertyMetadata> AllProperties,
-    IReadOnlyList<EntityPropertyMetadata> EditableProperties);
+    IReadOnlyList<EntityPropertyMetadata> EditableProperties)
+{
+    public IReadOnlyList<EntityPropertyMetadata> CreateEditableProperties => AllProperties.Where(property => property.IsEditableOnCreate).ToList();
+
+    public IReadOnlyList<EntityPropertyMetadata> UpdateEditableProperties => EditableProperties;
+}

@@ -15,7 +15,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         }
 
         var instance = Activator.CreateInstance(entity.ClrType)!;
-        var applyResult = ApplyValues(entity, instance, values);
+        var applyResult = ApplyValues(instance, entity.CreateEditableProperties, values);
         if (!applyResult.IsSuccess)
         {
             return applyResult;
@@ -40,7 +40,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
             return CrudOperationResult.Failure("id", "Row not found.");
         }
 
-        var applyResult = ApplyValues(entity, instance, values);
+        var applyResult = ApplyValues(instance, entity.UpdateEditableProperties, values);
         if (!applyResult.IsSuccess)
         {
             return applyResult;
@@ -82,11 +82,11 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         return entity;
     }
 
-    private CrudOperationResult ApplyValues(EntityMetadata entity, object instance, IReadOnlyDictionary<string, string?> values)
+    private CrudOperationResult ApplyValues(object instance, IReadOnlyList<EntityPropertyMetadata> properties, IReadOnlyDictionary<string, string?> values)
     {
         var boundValues = new List<(string PropertyName, object? Value)>();
 
-        foreach (var property in entity.EditableProperties)
+        foreach (var property in properties)
         {
             if (!values.TryGetValue(property.Name, out var rawValue))
             {
