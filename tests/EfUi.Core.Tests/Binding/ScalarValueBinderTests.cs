@@ -6,6 +6,14 @@ namespace EfUi.Core.Tests.Binding;
 
 public class ScalarValueBinderTests
 {
+    private enum SampleStatus
+    {
+        Draft,
+        Published
+    }
+
+    private sealed class UnsupportedType;
+
     [Theory]
     [InlineData(typeof(string), "Ada", "Ada")]
     [InlineData(typeof(int), "42", 42)]
@@ -57,6 +65,17 @@ public class ScalarValueBinderTests
     }
 
     [Fact]
+    public void Bind_returns_enum_value()
+    {
+        var sut = new ScalarValueBinder();
+
+        var result = sut.Bind(typeof(SampleStatus), "published");
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().Be(SampleStatus.Published);
+    }
+
+    [Fact]
     public void Bind_returns_failure_for_invalid_int()
     {
         var sut = new ScalarValueBinder();
@@ -65,5 +84,16 @@ public class ScalarValueBinderTests
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().Contain("int");
+    }
+
+    [Fact]
+    public void Bind_returns_failure_for_unsupported_type()
+    {
+        var sut = new ScalarValueBinder();
+
+        var result = sut.Bind(typeof(UnsupportedType), "value");
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Be("Type UnsupportedType is not supported.");
     }
 }
