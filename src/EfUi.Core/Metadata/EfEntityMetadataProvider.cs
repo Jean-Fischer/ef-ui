@@ -21,14 +21,24 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
 
     private static EntityMetadata Build(IEntityType entityType)
     {
+        var keyProperty = entityType.FindPrimaryKey()?.Properties.SingleOrDefault()
+            ?? throw new InvalidOperationException($"Entity '{entityType.ClrType.Name}' must have a single primary key.");
+
         var scalarProperties = entityType.GetProperties()
-            .Select(property => new EntityPropertyMetadata(property.Name, property.ClrType, IsEditable(property)))
+            .Select(property => new EntityPropertyMetadata(
+                property.Name,
+                property.ClrType,
+                IsEditable(property),
+                property.Name == keyProperty.Name))
             .ToList();
+
+        var primaryKeyMetadata = scalarProperties.Single(property => property.IsPrimaryKey);
 
         return new EntityMetadata(
             entityType.ClrType.Name,
             GetRouteName(entityType),
             entityType.ClrType,
+            primaryKeyMetadata,
             scalarProperties,
             scalarProperties.Where(x => x.IsEditable).ToList());
     }

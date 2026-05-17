@@ -45,7 +45,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
                 html.Append($"<td>{WebUtility.HtmlEncode(FormatValue(value))}</td>");
             }
 
-            var key = GetKeyValue(row);
+            var key = row.GetType().GetProperty(entity.PrimaryKeyProperty.Name)?.GetValue(row);
             html.Append("<td>");
             html.Append($"<a href=\"{routePrefix}/{entity.RouteName}/{key}/edit\">Edit</a>");
             html.Append($"<form method=\"post\" action=\"{routePrefix}/{entity.RouteName}/{key}/delete\" style=\"display:inline\">");
@@ -101,12 +101,5 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             DateTime dateTime => dateTime.ToString("O"),
             _ => value.ToString() ?? string.Empty
         };
-    }
-
-    private static object GetKeyValue(object row)
-    {
-        return row.GetType().GetProperty("Id")?.GetValue(row)
-            ?? row.GetType().GetProperties().First(property => property.Name.EndsWith("Id", StringComparison.Ordinal)).GetValue(row)
-            ?? string.Empty;
     }
 }

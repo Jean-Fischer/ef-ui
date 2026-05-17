@@ -32,6 +32,18 @@ public class EntityMetadataProviderTests
     }
 
     [Fact]
+    public void GetEntity_exposes_primary_key_metadata_for_non_conventional_key_names()
+    {
+        using var db = CreateAlternateKeyDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var tenant = sut.GetEntity(db, "tenants");
+
+        tenant.PrimaryKeyProperty.Name.Should().Be("TenantKey");
+        tenant.PrimaryKeyProperty.IsPrimaryKey.Should().BeTrue();
+    }
+
+    [Fact]
     public void Editable_properties_exclude_key_and_navigation_properties()
     {
         using var db = CreateDb();
@@ -92,6 +104,18 @@ public class EntityMetadataProviderTests
         return db;
     }
 
+    private static AlternateKeyDbContext CreateAlternateKeyDb()
+    {
+        var options = new DbContextOptionsBuilder<AlternateKeyDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        var db = new AlternateKeyDbContext(options);
+        db.Database.OpenConnection();
+        db.Database.EnsureCreated();
+        return db;
+    }
+
     private sealed class RouteNameDbContext(DbContextOptions<RouteNameDbContext> options) : DbContext(options)
     {
         public DbSet<User> Accounts => Set<User>();
@@ -107,10 +131,27 @@ public class EntityMetadataProviderTests
         public DbSet<Asset> Assets => Set<Asset>();
     }
 
+    private sealed class AlternateKeyDbContext(DbContextOptions<AlternateKeyDbContext> options) : DbContext(options)
+    {
+        public DbSet<Tenant> Tenants => Set<Tenant>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Tenant>().HasKey(x => x.TenantKey);
+        }
+    }
+
     private sealed class Asset
     {
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
         public byte[] Payload { get; set; } = Array.Empty<byte>();
+    }
+
+    private sealed class Tenant
+    {
+        public string TenantKey { get; set; } = string.Empty;
+        public int GroupId { get; set; }
+        public string Name { get; set; } = string.Empty;
     }
 }

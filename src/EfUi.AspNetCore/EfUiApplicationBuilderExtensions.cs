@@ -182,14 +182,12 @@ public static class EfUiApplicationBuilderExtensions
 
     private static object? TryReadKey(DbContext dbContext, EntityMetadata metadata, string id)
     {
-        var entityType = dbContext.Model.FindEntityType(metadata.ClrType);
-        var keyProperty = entityType?.FindPrimaryKey()?.Properties.SingleOrDefault();
-        if (keyProperty is null)
+        if (dbContext.Model.FindEntityType(metadata.ClrType)?.FindPrimaryKey() is null)
         {
             return null;
         }
 
-        var bindResult = new ScalarValueBinder().Bind(keyProperty.ClrType, id);
+        var bindResult = new ScalarValueBinder().Bind(metadata.PrimaryKeyProperty.ClrType, id);
         return bindResult.IsSuccess ? bindResult.Value : null;
     }
 
