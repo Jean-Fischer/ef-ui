@@ -37,6 +37,8 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
             ["GroupId"] = "1"
         }));
 
-        response.StatusCode.Should().BeOneOf(System.Net.HttpStatusCode.OK, System.Net.HttpStatusCode.Redirect, System.Net.HttpStatusCode.SeeOther);
+        response.StatusCode.Should().BeOneOf(System.Net.HttpStatusCode.Redirect, System.Net.HttpStatusCode.SeeOther);
+        response.Headers.Location.Should().NotBeNull();
+        response.Headers.Location!.ToString().Should().Be("/efui/users");
     }
 }
