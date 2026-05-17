@@ -44,15 +44,16 @@ public class EntityMetadataProviderTests
     }
 
     [Fact]
-    public void Editable_properties_include_only_scalar_types()
+    public void Editable_properties_exclude_unsupported_scalar_types_present_in_ef_metadata()
     {
-        using var db = CreateDb();
+        using var db = CreateUnsupportedScalarDb();
         var sut = new EfEntityMetadataProvider();
 
-        var group = sut.GetEntity(db, "groups");
+        var asset = sut.GetEntity(db, "assets");
 
-        group.EditableProperties.Select(x => x.Name).Should().BeEquivalentTo("Name");
-        group.EditableProperties.Select(x => x.Name).Should().NotContain("Users");
+        asset.AllProperties.Select(x => x.Name).Should().Contain("Payload");
+        asset.EditableProperties.Select(x => x.Name).Should().Contain("Name");
+        asset.EditableProperties.Select(x => x.Name).Should().NotContain("Payload");
     }
 
     private static SampleModelDbContext CreateDb()
@@ -79,6 +80,18 @@ public class EntityMetadataProviderTests
         return db;
     }
 
+    private static UnsupportedScalarDbContext CreateUnsupportedScalarDb()
+    {
+        var options = new DbContextOptionsBuilder<UnsupportedScalarDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        var db = new UnsupportedScalarDbContext(options);
+        db.Database.OpenConnection();
+        db.Database.EnsureCreated();
+        return db;
+    }
+
     private sealed class RouteNameDbContext(DbContextOptions<RouteNameDbContext> options) : DbContext(options)
     {
         public DbSet<User> Accounts => Set<User>();
@@ -87,5 +100,17 @@ public class EntityMetadataProviderTests
         {
             modelBuilder.Entity<User>().ToTable("app_users");
         }
+    }
+
+    private sealed class UnsupportedScalarDbContext(DbContextOptions<UnsupportedScalarDbContext> options) : DbContext(options)
+    {
+        public DbSet<Asset> Assets => Set<Asset>();
+    }
+
+    private sealed class Asset
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public byte[] Payload { get; set; } = Array.Empty<byte>();
     }
 }
