@@ -237,6 +237,7 @@ function Get-SonarIssues {
     do {
         $queryParts = @(
             "componentKeys=$([uri]::EscapeDataString($ProjectKey))",
+            'resolved=false',
             "ps=$pageSize",
             "p=$page"
         )
