@@ -46,9 +46,10 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             }
 
             var key = row.GetType().GetProperty(entity.PrimaryKeyProperty.Name)?.GetValue(row);
+            var escapedKey = EscapeRouteSegment(key);
             html.Append("<td>");
-            html.Append($"<a href=\"{routePrefix}/{entity.RouteName}/{key}/edit\">Edit</a>");
-            html.Append($"<form method=\"post\" action=\"{routePrefix}/{entity.RouteName}/{key}/delete\" style=\"display:inline\">");
+            html.Append($"<a href=\"{routePrefix}/{entity.RouteName}/{escapedKey}/edit\">Edit</a>");
+            html.Append($"<form method=\"post\" action=\"{routePrefix}/{entity.RouteName}/{escapedKey}/delete\" style=\"display:inline\">");
             html.Append("<button type=\"submit\">Delete</button></form>");
             html.Append("</td></tr>");
         }
@@ -64,7 +65,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     {
         var action = isCreate
             ? $"{routePrefix}/{entity.RouteName}"
-            : $"{routePrefix}/{entity.RouteName}/{key}";
+            : $"{routePrefix}/{entity.RouteName}/{EscapeRouteSegment(key)}";
 
         var html = new StringBuilder();
         html.Append("<html><body>");
@@ -92,6 +93,9 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append("</body></html>");
         return html.ToString();
     }
+
+    private static string EscapeRouteSegment(object? value)
+        => Uri.EscapeDataString(FormatValue(value));
 
     private static string FormatValue(object? value)
     {
