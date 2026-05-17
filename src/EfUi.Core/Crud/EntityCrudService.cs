@@ -18,7 +18,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         }
 
         var instance = Activator.CreateInstance(entity.ClrType)!;
-        var applyResult = await ApplyValuesAsync(dbContext, instance, entity.CreateEditableFields, values);
+        var applyResult = await ApplyValuesAsync(dbContext, entity, instance, entity.CreateEditableFields, values);
         if (!applyResult.IsSuccess)
         {
             return applyResult;
@@ -47,7 +47,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
 
         await LoadCollectionFieldsAsync(dbContext, instance, entity.UpdateEditableFields);
 
-        var applyResult = await ApplyValuesAsync(dbContext, instance, entity.UpdateEditableFields, values);
+        var applyResult = await ApplyValuesAsync(dbContext, entity, instance, entity.UpdateEditableFields, values);
         if (!applyResult.IsSuccess)
         {
             return applyResult;
@@ -100,7 +100,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         }
     }
 
-    private async Task<CrudOperationResult> ApplyValuesAsync(DbContext dbContext, object instance, IReadOnlyList<EditableFieldMetadata> fields, IReadOnlyDictionary<string, string[]> values)
+    private async Task<CrudOperationResult> ApplyValuesAsync(DbContext dbContext, EntityMetadata entity, object instance, IReadOnlyList<EditableFieldMetadata> fields, IReadOnlyDictionary<string, string[]> values)
     {
         var boundValues = new List<(string PropertyName, object? Value)>();
         var collectionFields = new List<(EditableFieldMetadata Field, IReadOnlyList<string> RawValues)>();
@@ -137,7 +137,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
 
         foreach (var collectionField in collectionFields)
         {
-            var collectionResult = await ApplyCollectionFieldAsync(dbContext, instance, collectionField.Field, collectionField.RawValues);
+            var collectionResult = await ApplyCollectionFieldAsync(dbContext, entity, instance, collectionField.Field, collectionField.RawValues);
             if (!collectionResult.IsSuccess)
             {
                 return collectionResult;
@@ -155,7 +155,16 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         }
     }
 
-    private async Task<CrudOperationResult> ApplyCollectionFieldAsync(DbContext dbContext, object instance, EditableFieldMetadata field, IReadOnlyList<string> rawValues)
+    private async Task<CrudOperationResult> ApplyCollectionFieldAsync(DbContext dbContext, EntityMetadata entity, object instance, EditableFieldMetadata field, IReadOnlyList<string> rawValues)
+    {
+        return field.CollectionRelationshipKind switch
+        {
+            CollectionRelationshipKind.OneToMany => await ApplyOneToManyCollectionFieldAsync(dbContext, entity, instance, field, rawValues),
+            _ => await ApplyManyToManyCollectionFieldAsync(dbContext, instance, field, rawValues)
+        };
+    }
+
+    private async Task<CrudOperationResult> ApplyManyToManyCollectionFieldAsync(DbContext dbContext, object instance, EditableFieldMetadata field, IReadOnlyList<string> rawValues)
     {
         if (field.NavigationPropertyName is null || field.RelatedClrType is null)
         {
@@ -202,6 +211,105 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
 
         return CrudOperationResult.Success();
     }
+
+    private async Task<CrudOperationResult> ApplyOneToManyCollectionFieldAsync(DbContext dbContext, EntityMetadata entity, object instance, EditableFieldMetadata field, IReadOnlyList<string> rawValues)
+    {
+        if (field.NavigationPropertyName is null || field.RelatedClrType is null || field.ScalarPropertyName is null)
+        {
+            return CrudOperationResult.Failure(field.Name, "Invalid collection configuration.");
+        }
+
+        var childEntityType = dbContext.Model.FindEntityType(field.RelatedClrType);
+        var childKeyProperty = childEntityType?.FindPrimaryKey()?.Properties.SingleOrDefault();
+        var childForeignKeyProperty = childEntityType?.FindProperty(field.ScalarPropertyName);
+        if (childKeyProperty is null || childForeignKeyProperty is null)
+        {
+            return CrudOperationResult.Failure(field.Name, "Related entity must have a single primary key.");
+        }
+
+        var selectedChildKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var selectedValue in rawValues.Where(value => !string.IsNullOrWhiteSpace(value)))
+        {
+            var bindResult = binder.Bind(childKeyProperty.ClrType, selectedValue);
+            if (!bindResult.IsSuccess)
+            {
+                return CrudOperationResult.Failure(field.Name, bindResult.Error ?? "Invalid value.");
+            }
+
+            selectedChildKeys.Add(FormatValue(bindResult.Value));
+        }
+
+        var parentKeyValue = instance.GetType().GetProperty(entity.PrimaryKeyProperty.Name)?.GetValue(instance);
+        var allChildren = ReadRows(dbContext, field.RelatedClrType);
+        var childrenByKey = allChildren.ToDictionary(
+            child => FormatValue(child.GetType().GetProperty(childKeyProperty.Name)?.GetValue(child)),
+            child => child,
+            StringComparer.Ordinal);
+
+        foreach (var selectedChildKey in selectedChildKeys)
+        {
+            if (!childrenByKey.TryGetValue(selectedChildKey, out var selectedChild))
+            {
+                return CrudOperationResult.Failure(field.Name, "Selected related row not found.");
+            }
+
+            var ownerValue = selectedChild.GetType().GetProperty(field.ScalarPropertyName)?.GetValue(selectedChild);
+            if (ownerValue is not null && !Equals(ownerValue, parentKeyValue))
+            {
+                return CrudOperationResult.Failure(field.Name, "Selected related row is already assigned to another parent.");
+            }
+        }
+
+        var currentChildren = GetCurrentChildren(instance, field.NavigationPropertyName)
+            .ToList();
+        var removedChildren = currentChildren
+            .Where(child => !selectedChildKeys.Contains(FormatValue(child.GetType().GetProperty(childKeyProperty.Name)?.GetValue(child))))
+            .ToList();
+
+        if (field.IsRequired && removedChildren.Count != 0)
+        {
+            return CrudOperationResult.Failure(field.Name, "Required related rows cannot be removed without reassignment.");
+        }
+
+        foreach (var selectedChildKey in selectedChildKeys)
+        {
+            var selectedChild = childrenByKey[selectedChildKey];
+            selectedChild.GetType().GetProperty(field.ScalarPropertyName)?.SetValue(selectedChild, parentKeyValue);
+        }
+
+        foreach (var removedChild in removedChildren)
+        {
+            removedChild.GetType().GetProperty(field.ScalarPropertyName)?.SetValue(removedChild, null);
+        }
+
+        return CrudOperationResult.Success();
+    }
+
+    private static IReadOnlyList<object> ReadRows(DbContext dbContext, Type entityClrType)
+    {
+        var setMethod = typeof(DbContext).GetMethods()
+            .Single(method => method.Name == nameof(DbContext.Set)
+                              && method.IsGenericMethodDefinition
+                              && method.GetParameters().Length == 0);
+
+        var queryable = (System.Collections.IEnumerable)setMethod.MakeGenericMethod(entityClrType).Invoke(dbContext, null)!;
+        return queryable.Cast<object>().ToList();
+    }
+
+    private static IEnumerable<object> GetCurrentChildren(object instance, string navigationPropertyName)
+    {
+        var navigationProperty = instance.GetType().GetProperty(navigationPropertyName);
+        var collection = navigationProperty?.GetValue(instance) as System.Collections.IEnumerable;
+        return collection?.Cast<object>() ?? [];
+    }
+
+    private static string FormatValue(object? value)
+        => value switch
+        {
+            null => string.Empty,
+            DateTime dateTime => dateTime.ToString("O"),
+            _ => value.ToString() ?? string.Empty
+        };
 
     private static IReadOnlyDictionary<string, string[]> ToMultiValueDictionary(IReadOnlyDictionary<string, string?> values)
         => values.ToDictionary(
