@@ -1,0 +1,5 @@
+[tasks.sonar]
+description = "Run the SonarCloud scan and write local summary artifacts"
+run = "pwsh -NoProfile -File scripts/sonar-scan.ps1"
+run_windows = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\sonar-scan.ps1"
+alias = "sonar-scan"
