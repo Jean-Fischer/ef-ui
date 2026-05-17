@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.RegularExpressions;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -45,41 +46,93 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Get_edit_form_for_existing_row_renders_current_values()
+    {
+        var email = $"edit-{Guid.NewGuid():N}@example.com";
+        var id = await CreateUserAndGetIdAsync("Edit Me", email);
+
+        var html = await _client.GetStringAsync($"/efui/users/{id}/edit");
+
+        html.Should().Contain($"action=\"/efui/users/{id}\"");
+        html.Should().Contain("name=\"Name\" value=\"Edit Me\"");
+        html.Should().Contain($"name=\"Email\" value=\"{email}\"");
+        html.Should().Contain("name=\"IsActive\" value=\"True\"");
+        html.Should().NotContain("name=\"Id\"");
+    }
+
+    [Fact]
     public async Task Post_create_user_redirects_back_to_entity_page()
     {
         var response = await _client.PostAsync("/efui/users", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["Name"] = "Grace",
-            ["Email"] = "grace@example.com",
+            ["Email"] = $"grace-{Guid.NewGuid():N}@example.com",
             ["IsActive"] = "true",
             ["CreatedAt"] = "2026-05-17T10:00:00",
             ["GroupId"] = "1"
         }));
 
-        response.StatusCode.Should().BeOneOf(System.Net.HttpStatusCode.Redirect, System.Net.HttpStatusCode.SeeOther);
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
         response.Headers.Location.Should().NotBeNull();
         response.Headers.Location!.ToString().Should().Be("/efui/users");
     }
 
     [Fact]
-    public async Task Post_delete_removes_user()
+    public async Task Post_update_existing_row_redirects_and_persists_changes()
     {
-        await _client.PostAsync("/efui/users", new FormUrlEncodedContent(new Dictionary<string, string>
+        var originalEmail = $"before-{Guid.NewGuid():N}@example.com";
+        var updatedEmail = $"after-{Guid.NewGuid():N}@example.com";
+        var id = await CreateUserAndGetIdAsync("Before Update", originalEmail);
+
+        var response = await _client.PostAsync($"/efui/users/{id}", new FormUrlEncodedContent(new Dictionary<string, string>
         {
-            ["Name"] = "Delete Me",
-            ["Email"] = $"delete-{Guid.NewGuid():N}@example.com",
-            ["IsActive"] = "true",
-            ["CreatedAt"] = "2026-05-17T10:00:00"
+            ["Name"] = "After Update",
+            ["Email"] = updatedEmail,
+            ["IsActive"] = "false",
+            ["CreatedAt"] = "2026-05-18T12:30:00",
+            ["GroupId"] = "1"
         }));
 
-        var html = await _client.GetStringAsync("/efui/users");
-        var match = Regex.Match(html, @"<tr>(?:(?!</tr>).)*Delete Me(?:(?!</tr>).)*/efui/users/(?<id>\d+)/edit", RegexOptions.Singleline);
-        match.Success.Should().BeTrue();
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
+        response.Headers.Location.Should().NotBeNull();
+        response.Headers.Location!.ToString().Should().Be("/efui/users");
 
-        var response = await _client.PostAsync($"/efui/users/{match.Groups["id"].Value}/delete", new FormUrlEncodedContent(new Dictionary<string, string>()));
+        var html = await _client.GetStringAsync($"/efui/users/{id}/edit");
+        html.Should().Contain("name=\"Name\" value=\"After Update\"");
+        html.Should().Contain($"name=\"Email\" value=\"{updatedEmail}\"");
+        html.Should().Contain("name=\"IsActive\" value=\"False\"");
+        html.Should().Contain("name=\"CreatedAt\" value=\"2026-05-18T12:30:00.0000000\"");
+    }
+
+    [Fact]
+    public async Task Post_delete_removes_user()
+    {
+        var email = $"delete-{Guid.NewGuid():N}@example.com";
+        var id = await CreateUserAndGetIdAsync("Delete Me", email);
+
+        var response = await _client.PostAsync($"/efui/users/{id}/delete", new FormUrlEncodedContent(new Dictionary<string, string>()));
 
         response.IsSuccessStatusCode.Should().BeTrue();
         var updatedHtml = await response.Content.ReadAsStringAsync();
-        updatedHtml.Should().NotContain("Delete Me");
+        updatedHtml.Should().NotContain(email);
+    }
+
+    private async Task<string> CreateUserAndGetIdAsync(string name, string email)
+    {
+        var createResponse = await _client.PostAsync("/efui/users", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Name"] = name,
+            ["Email"] = email,
+            ["IsActive"] = "true",
+            ["CreatedAt"] = "2026-05-17T10:00:00",
+            ["GroupId"] = "1"
+        }));
+
+        createResponse.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
+
+        var html = await _client.GetStringAsync("/efui/users");
+        var match = Regex.Match(html, $@"<tr>(?:(?!</tr>).)*{Regex.Escape(email)}(?:(?!</tr>).)*/efui/users/(?<id>\d+)/edit", RegexOptions.Singleline);
+        match.Success.Should().BeTrue();
+        return match.Groups["id"].Value;
     }
 }
