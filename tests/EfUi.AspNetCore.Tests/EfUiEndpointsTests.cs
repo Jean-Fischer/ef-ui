@@ -87,7 +87,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
 
         var html = await _client.GetStringAsync($"/simple/users/{id}/edit");
 
-        html.Should().Contain("<select name=\"Group\">");
+        html.Should().Contain("<select class=\"efui-select\" name=\"Group\">");
         html.Should().Contain(">Admins<");
         html.Should().Contain(">Guests<");
         html.Should().NotContain("name=\"GroupId\"");
