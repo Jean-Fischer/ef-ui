@@ -15,6 +15,7 @@ public class EntityCrudServiceTests
     {
         await using var db = await CreateDbAsync();
         var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+        var createdAt = new DateTime(2026, 5, 17, 10, 0, 0);
 
         var result = await sut.CreateAsync(db, "users", new Dictionary<string, string?>
         {
@@ -26,7 +27,13 @@ public class EntityCrudServiceTests
         });
 
         result.IsSuccess.Should().BeTrue();
-        (await db.Users.CountAsync()).Should().Be(1);
+
+        var user = await db.Users.SingleAsync();
+        user.Name.Should().Be("Grace");
+        user.Email.Should().Be("grace@example.com");
+        user.IsActive.Should().BeTrue();
+        user.CreatedAt.Should().Be(createdAt);
+        user.GroupId.Should().Be(1);
     }
 
     [Fact]
@@ -65,6 +72,20 @@ public class EntityCrudServiceTests
 
         result.IsSuccess.Should().BeTrue();
         (await db.Users.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task CreateAsync_returns_failure_for_unknown_entity()
+    {
+        await using var db = await CreateDbAsync();
+        var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+
+        var act = () => sut.CreateAsync(db, "missing-entities", new Dictionary<string, string?>());
+
+        var result = await act.Should().NotThrowAsync();
+        result.Which.IsSuccess.Should().BeFalse();
+        result.Which.Errors.Should().ContainKey("entity");
+        result.Which.Errors["entity"].Should().ContainSingle().Which.Should().Contain("missing-entities");
     }
 
     private static async Task<SampleModelDbContext> CreateDbAsync()

@@ -8,7 +8,12 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
 {
     public async Task<CrudOperationResult> CreateAsync(DbContext dbContext, string entityRoute, IReadOnlyDictionary<string, string?> values)
     {
-        var entity = metadataProvider.GetEntity(dbContext, entityRoute);
+        var entity = ResolveEntity(dbContext, entityRoute, out var failure);
+        if (entity is null)
+        {
+            return failure!;
+        }
+
         var instance = Activator.CreateInstance(entity.ClrType)!;
         var applyResult = ApplyValues(entity, instance, values);
         if (!applyResult.IsSuccess)
@@ -23,7 +28,12 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
 
     public async Task<CrudOperationResult> UpdateAsync(DbContext dbContext, string entityRoute, object key, IReadOnlyDictionary<string, string?> values)
     {
-        var entity = metadataProvider.GetEntity(dbContext, entityRoute);
+        var entity = ResolveEntity(dbContext, entityRoute, out var failure);
+        if (entity is null)
+        {
+            return failure!;
+        }
+
         var instance = await dbContext.FindAsync(entity.ClrType, key);
         if (instance is null)
         {
@@ -42,7 +52,12 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
 
     public async Task<CrudOperationResult> DeleteAsync(DbContext dbContext, string entityRoute, object key)
     {
-        var entity = metadataProvider.GetEntity(dbContext, entityRoute);
+        var entity = ResolveEntity(dbContext, entityRoute, out var failure);
+        if (entity is null)
+        {
+            return failure!;
+        }
+
         var instance = await dbContext.FindAsync(entity.ClrType, key);
         if (instance is null)
         {
@@ -52,6 +67,19 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         dbContext.Remove(instance);
         await dbContext.SaveChangesAsync();
         return CrudOperationResult.Success();
+    }
+
+    private EntityMetadata? ResolveEntity(DbContext dbContext, string entityRoute, out CrudOperationResult? failure)
+    {
+        var entity = metadataProvider.GetEntities(dbContext).SingleOrDefault(x => x.RouteName == entityRoute);
+        if (entity is null)
+        {
+            failure = CrudOperationResult.Failure("entity", $"Unknown entity '{entityRoute}'.");
+            return null;
+        }
+
+        failure = null;
+        return entity;
     }
 
     private CrudOperationResult ApplyValues(EntityMetadata entity, object instance, IReadOnlyDictionary<string, string?> values)
