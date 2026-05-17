@@ -23,5 +23,7 @@ src/EfUi.SampleHost/sample.db
 src/EfUi.SampleHost/sample.db-shm
 src/EfUi.SampleHost/sample.db-wal
 
+# Local git worktrees
+.worktrees/
 
 .sonarqube
