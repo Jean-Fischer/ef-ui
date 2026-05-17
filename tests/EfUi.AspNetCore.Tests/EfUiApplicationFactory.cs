@@ -17,6 +17,7 @@ public sealed class ProductionEfUiApplicationFactory : AppHostFactoryBase
 public abstract class AppHostFactoryBase : WebApplicationFactory<Program>
 {
     private readonly string _tempDirectory = Path.Combine(Path.GetTempPath(), "ef-ui-tests", Guid.NewGuid().ToString("N"));
+    private string TempSampleDbPath => Path.Combine(_tempDirectory, "sample.db");
     private string TempChinookDbPath => Path.Combine(_tempDirectory, "chinook.db");
 
     protected abstract string EnvironmentName { get; }
@@ -31,6 +32,7 @@ public abstract class AppHostFactoryBase : WebApplicationFactory<Program>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
+                ["ConnectionStrings:Sample"] = $"Data Source={TempSampleDbPath}",
                 ["ConnectionStrings:Chinook"] = $"Data Source={TempChinookDbPath}"
             });
         });
