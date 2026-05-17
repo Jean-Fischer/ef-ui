@@ -58,10 +58,10 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         return html.ToString();
     }
 
-    public string RenderForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors)
-        => RenderEditForm(routePrefix, entity, model, isCreate, errors, null);
+    public string RenderForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, IReadOnlyDictionary<string, string?>? submittedValues = null)
+        => RenderEditForm(routePrefix, entity, model, isCreate, errors, null, submittedValues);
 
-    public string RenderEditForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, object? key)
+    public string RenderEditForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, object? key, IReadOnlyDictionary<string, string?>? submittedValues = null)
     {
         var action = isCreate
             ? $"{routePrefix}/{entity.RouteName}"
@@ -81,9 +81,17 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
         foreach (var property in entity.EditableProperties)
         {
-            var value = model is null
-                ? string.Empty
-                : FormatValue(model.GetType().GetProperty(property.Name)?.GetValue(model));
+            string value;
+            if (submittedValues is not null && submittedValues.TryGetValue(property.Name, out var submittedValue))
+            {
+                value = submittedValue ?? string.Empty;
+            }
+            else
+            {
+                value = model is null
+                    ? string.Empty
+                    : FormatValue(model.GetType().GetProperty(property.Name)?.GetValue(model));
+            }
 
             html.Append($"<label>{WebUtility.HtmlEncode(property.Name)}</label>");
             html.Append($"<input name=\"{property.Name}\" value=\"{WebUtility.HtmlEncode(value)}\" />");

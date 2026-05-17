@@ -105,6 +105,51 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Post_create_failure_preserves_submitted_values()
+    {
+        var email = $"invalid-{Guid.NewGuid():N}@example.com";
+        var response = await _client.PostAsync("/efui/users", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Name"] = "Keep Me",
+            ["Email"] = email,
+            ["IsActive"] = "true",
+            ["CreatedAt"] = "not-a-date",
+            ["GroupId"] = "1"
+        }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var html = await response.Content.ReadAsStringAsync();
+        html.Should().Contain("name=\"Name\" value=\"Keep Me\"");
+        html.Should().Contain($"name=\"Email\" value=\"{email}\"");
+        html.Should().Contain("name=\"CreatedAt\" value=\"not-a-date\"");
+    }
+
+    [Fact]
+    public async Task Post_update_failure_preserves_submitted_values_without_showing_stale_model_values()
+    {
+        var originalEmail = $"original-{Guid.NewGuid():N}@example.com";
+        var submittedEmail = $"submitted-{Guid.NewGuid():N}@example.com";
+        var id = await CreateUserAndGetIdAsync("Original Name", originalEmail);
+
+        var response = await _client.PostAsync($"/efui/users/{id}", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Name"] = "Edited Name",
+            ["Email"] = submittedEmail,
+            ["IsActive"] = "false",
+            ["CreatedAt"] = "bad-date"
+        }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var html = await response.Content.ReadAsStringAsync();
+        html.Should().Contain("name=\"Name\" value=\"Edited Name\"");
+        html.Should().Contain($"name=\"Email\" value=\"{submittedEmail}\"");
+        html.Should().Contain("name=\"IsActive\" value=\"false\"");
+        html.Should().Contain("name=\"CreatedAt\" value=\"bad-date\"");
+        html.Should().NotContain(originalEmail);
+        html.Should().NotContain("2026-05-17T10:00:00.0000000");
+    }
+
+    [Fact]
     public async Task Post_delete_removes_user()
     {
         var email = $"delete-{Guid.NewGuid():N}@example.com";

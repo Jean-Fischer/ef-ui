@@ -49,6 +49,49 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
+    public void RenderEditForm_prefers_submitted_values_over_model_values()
+    {
+        var sut = new HtmlPageRenderer();
+        var metadata = new EntityMetadata(
+            "User",
+            "users",
+            typeof(UserRow),
+            new EntityPropertyMetadata("Id", typeof(int), false, true),
+            new[]
+            {
+                new EntityPropertyMetadata("Id", typeof(int), false, true),
+                new EntityPropertyMetadata("Name", typeof(string), true),
+                new EntityPropertyMetadata("Email", typeof(string), true),
+                new EntityPropertyMetadata("CreatedAt", typeof(DateTime), true)
+            },
+            new[]
+            {
+                new EntityPropertyMetadata("Name", typeof(string), true),
+                new EntityPropertyMetadata("Email", typeof(string), true),
+                new EntityPropertyMetadata("CreatedAt", typeof(DateTime), true)
+            });
+
+        var html = sut.RenderEditForm(
+            "/efui",
+            metadata,
+            new UserRow { Id = 7, Name = "Original", Email = "original@example.com", CreatedAt = new DateTime(2026, 5, 17, 10, 0, 0) },
+            isCreate: false,
+            errors: new Dictionary<string, string[]> { ["CreatedAt"] = new[] { "Invalid value." } },
+            key: 7,
+            submittedValues: new Dictionary<string, string?>
+            {
+                ["Name"] = "Edited",
+                ["Email"] = "edited@example.com",
+                ["CreatedAt"] = "not-a-date"
+            });
+
+        html.Should().Contain("name=\"Name\" value=\"Edited\"");
+        html.Should().Contain("name=\"Email\" value=\"edited@example.com\"");
+        html.Should().Contain("name=\"CreatedAt\" value=\"not-a-date\"");
+        html.Should().NotContain("original@example.com");
+    }
+
+    [Fact]
     public void RenderList_uri_escapes_primary_key_values_in_action_links()
     {
         var sut = new HtmlPageRenderer();
@@ -103,6 +146,14 @@ public class HtmlPageRendererTests
 
         html.Should().Contain("action=\"/efui/tenants/tenant%20%2F%20north%3F1\"");
         html.Should().NotContain("action=\"/efui/tenants/tenant / north?1\"");
+    }
+
+    private sealed class UserRow
+    {
+        public int Id { get; init; }
+        public string Name { get; init; } = string.Empty;
+        public string Email { get; init; } = string.Empty;
+        public DateTime CreatedAt { get; init; }
     }
 
     private sealed class TenantRow

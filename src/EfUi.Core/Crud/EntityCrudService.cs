@@ -84,6 +84,8 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
 
     private CrudOperationResult ApplyValues(EntityMetadata entity, object instance, IReadOnlyDictionary<string, string?> values)
     {
+        var boundValues = new List<(string PropertyName, object? Value)>();
+
         foreach (var property in entity.EditableProperties)
         {
             if (!values.TryGetValue(property.Name, out var rawValue))
@@ -97,7 +99,12 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
                 return CrudOperationResult.Failure(property.Name, bindResult.Error ?? "Invalid value.");
             }
 
-            instance.GetType().GetProperty(property.Name)!.SetValue(instance, bindResult.Value);
+            boundValues.Add((property.Name, bindResult.Value));
+        }
+
+        foreach (var boundValue in boundValues)
+        {
+            instance.GetType().GetProperty(boundValue.PropertyName)!.SetValue(instance, boundValue.Value);
         }
 
         return CrudOperationResult.Success();

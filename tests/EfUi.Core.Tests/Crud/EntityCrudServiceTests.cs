@@ -75,6 +75,40 @@ public class EntityCrudServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_with_invalid_value_does_not_mutate_existing_entity()
+    {
+        await using var db = await CreateDbAsync();
+        var originalCreatedAt = new DateTime(2026, 5, 17, 10, 0, 0);
+        db.Users.Add(new User
+        {
+            Name = "Original Name",
+            Email = "original@example.com",
+            IsActive = true,
+            CreatedAt = originalCreatedAt,
+            GroupId = 1
+        });
+        await db.SaveChangesAsync();
+
+        var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+        var id = db.Users.Single().Id;
+
+        var result = await sut.UpdateAsync(db, "users", id, new Dictionary<string, string?>
+        {
+            ["Name"] = "Edited Name",
+            ["Email"] = "edited@example.com",
+            ["CreatedAt"] = "not-a-date"
+        });
+
+        result.IsSuccess.Should().BeFalse();
+        result.Errors.Should().ContainKey("CreatedAt");
+
+        var user = await db.Users.SingleAsync();
+        user.Name.Should().Be("Original Name");
+        user.Email.Should().Be("original@example.com");
+        user.CreatedAt.Should().Be(originalCreatedAt);
+    }
+
+    [Fact]
     public async Task CreateAsync_returns_failure_for_unknown_entity()
     {
         await using var db = await CreateDbAsync();

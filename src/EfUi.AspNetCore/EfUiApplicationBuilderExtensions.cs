@@ -104,7 +104,7 @@ public static class EfUiApplicationBuilderExtensions
 
             return result.IsSuccess
                 ? Results.Redirect($"{options.RoutePrefix}/{entity}")
-                : CreateFailureResult(options.RoutePrefix, dbContext, entity, result, null, isCreate: true);
+                : CreateFailureResult(options.RoutePrefix, dbContext, entity, result, null, isCreate: true, submittedValues: values);
         });
 
         app.MapPost($"{options.RoutePrefix}/{{entity}}/{{id}}", async (string entity, string id, HttpRequest request, IServiceProvider services) =>
@@ -129,7 +129,7 @@ public static class EfUiApplicationBuilderExtensions
 
             return result.IsSuccess
                 ? Results.Redirect($"{options.RoutePrefix}/{entity}")
-                : CreateFailureResult(options.RoutePrefix, dbContext, entity, result, key, isCreate: false);
+                : CreateFailureResult(options.RoutePrefix, dbContext, entity, result, key, isCreate: false, submittedValues: values);
         });
 
         app.MapPost($"{options.RoutePrefix}/{{entity}}/{{id}}/delete", async (string entity, string id, IServiceProvider services) =>
@@ -191,7 +191,7 @@ public static class EfUiApplicationBuilderExtensions
         return bindResult.IsSuccess ? bindResult.Value : null;
     }
 
-    private static IResult CreateFailureResult(string routePrefix, DbContext dbContext, string entity, CrudOperationResult result, object? key, bool isCreate)
+    private static IResult CreateFailureResult(string routePrefix, DbContext dbContext, string entity, CrudOperationResult result, object? key, bool isCreate, IReadOnlyDictionary<string, string?> submittedValues)
     {
         if (result.Errors.ContainsKey("entity") || result.Errors.ContainsKey("id"))
         {
@@ -207,7 +207,7 @@ public static class EfUiApplicationBuilderExtensions
         }
 
         var model = !isCreate && key is not null ? dbContext.Find(metadata.ClrType, key) : null;
-        var html = renderer.RenderEditForm(routePrefix, metadata, model, isCreate, result.Errors, key);
+        var html = renderer.RenderEditForm(routePrefix, metadata, model, isCreate, result.Errors, key, submittedValues);
         return Results.Content(html, "text/html", statusCode: StatusCodes.Status400BadRequest);
     }
 
