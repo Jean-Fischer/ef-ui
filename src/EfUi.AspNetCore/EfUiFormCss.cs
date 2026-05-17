@@ -192,6 +192,47 @@ internal static class EfUiFormCss
   text-decoration: underline;
 }
 
+.efui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.efui-chip-remove {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.efui-chip-picker-result {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #111827;
+  padding: 0.625rem 0.75rem;
+  cursor: pointer;
+}
+
+.efui-chip-picker-result:hover {
+  background: #f8fafc;
+}
+
+.efui-chip-picker-empty {
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
 .efui-button {
   display: inline-flex;
   align-items: center;
