@@ -20,49 +20,78 @@ public sealed class ScalarValueBinder : IScalarValueBinder
                 return BindResult.Success(null);
             }
 
-            if (actualType == typeof(int))
+            return actualType switch
             {
-                return BindResult.Success(int.Parse(rawValue!, CultureInfo.InvariantCulture));
-            }
-
-            if (actualType == typeof(bool))
-            {
-                return BindResult.Success(bool.Parse(rawValue!));
-            }
-
-            if (actualType == typeof(DateTime))
-            {
-                return BindResult.Success(DateTime.Parse(rawValue!, CultureInfo.InvariantCulture));
-            }
-
-            if (actualType.IsEnum)
-            {
-                return BindResult.Success(Enum.Parse(actualType, rawValue!, ignoreCase: true));
-            }
+                _ when actualType == typeof(bool) => BindResult.Success(bool.Parse(rawValue!)),
+                _ when actualType == typeof(byte) => BindResult.Success(byte.Parse(rawValue!, CultureInfo.InvariantCulture)),
+                _ when actualType == typeof(short) => BindResult.Success(short.Parse(rawValue!, CultureInfo.InvariantCulture)),
+                _ when actualType == typeof(int) => BindResult.Success(int.Parse(rawValue!, CultureInfo.InvariantCulture)),
+                _ when actualType == typeof(long) => BindResult.Success(long.Parse(rawValue!, CultureInfo.InvariantCulture)),
+                _ when actualType == typeof(float) => BindResult.Success(float.Parse(rawValue!, CultureInfo.InvariantCulture)),
+                _ when actualType == typeof(double) => BindResult.Success(double.Parse(rawValue!, CultureInfo.InvariantCulture)),
+                _ when actualType == typeof(decimal) => BindResult.Success(decimal.Parse(rawValue!, CultureInfo.InvariantCulture)),
+                _ when actualType == typeof(DateTime) => BindResult.Success(DateTime.Parse(rawValue!, CultureInfo.InvariantCulture)),
+                _ when actualType == typeof(Guid) => BindResult.Success(Guid.Parse(rawValue!)),
+                _ when actualType.IsEnum => BindResult.Success(Enum.Parse(actualType, rawValue!, ignoreCase: true)),
+                _ => BindResult.Failure($"Type {GetDisplayName(actualType)} is not supported.")
+            };
         }
         catch
         {
             return BindResult.Failure($"Could not parse '{rawValue}' as {GetDisplayName(actualType)}.");
         }
-
-        return BindResult.Failure($"Type {GetDisplayName(actualType)} is not supported.");
     }
 
     private static string GetDisplayName(Type type)
     {
-        if (type == typeof(int))
-        {
-            return "int";
-        }
-
         if (type == typeof(bool))
         {
             return "bool";
         }
 
+        if (type == typeof(byte))
+        {
+            return "byte";
+        }
+
+        if (type == typeof(short))
+        {
+            return "short";
+        }
+
+        if (type == typeof(int))
+        {
+            return "int";
+        }
+
+        if (type == typeof(long))
+        {
+            return "long";
+        }
+
+        if (type == typeof(float))
+        {
+            return "float";
+        }
+
+        if (type == typeof(double))
+        {
+            return "double";
+        }
+
+        if (type == typeof(decimal))
+        {
+            return "decimal";
+        }
+
         if (type == typeof(DateTime))
         {
             return "DateTime";
+        }
+
+        if (type == typeof(Guid))
+        {
+            return "Guid";
         }
 
         return type.Name;
