@@ -43,6 +43,18 @@ public class EntityMetadataProviderTests
         user.EditableProperties.Select(x => x.Name).Should().NotContain(new[] { "Id", "Group" });
     }
 
+    [Fact]
+    public void Editable_properties_include_only_scalar_types()
+    {
+        using var db = CreateDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var group = sut.GetEntity(db, "groups");
+
+        group.EditableProperties.Select(x => x.Name).Should().BeEquivalentTo("Name");
+        group.EditableProperties.Select(x => x.Name).Should().NotContain("Users");
+    }
+
     private static SampleModelDbContext CreateDb()
     {
         var options = new DbContextOptionsBuilder<SampleModelDbContext>()

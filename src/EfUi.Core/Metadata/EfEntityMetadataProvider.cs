@@ -43,5 +43,24 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
     private static bool IsEditable(IProperty property)
         => !property.IsPrimaryKey()
            && !property.IsShadowProperty()
-           && property.PropertyInfo?.SetMethod is not null;
+           && property.PropertyInfo?.SetMethod is not null
+           && IsSupportedScalar(property.ClrType);
+
+    private static bool IsSupportedScalar(Type type)
+    {
+        var actual = Nullable.GetUnderlyingType(type) ?? type;
+
+        return actual.IsEnum
+            || actual == typeof(string)
+            || actual == typeof(bool)
+            || actual == typeof(byte)
+            || actual == typeof(short)
+            || actual == typeof(int)
+            || actual == typeof(long)
+            || actual == typeof(float)
+            || actual == typeof(double)
+            || actual == typeof(decimal)
+            || actual == typeof(DateTime)
+            || actual == typeof(Guid);
+    }
 }
