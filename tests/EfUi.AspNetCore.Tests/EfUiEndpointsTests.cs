@@ -57,6 +57,14 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Get_group_create_form_does_not_render_one_to_many_picker_before_parent_exists()
+    {
+        var html = await _client.GetStringAsync("/simple/groups/new");
+
+        html.Should().NotContain("name=\"Users\" type=\"checkbox\"");
+    }
+
+    [Fact]
     public async Task Get_edit_form_for_existing_row_renders_current_values()
     {
         var email = $"edit-{Guid.NewGuid():N}@example.com";
