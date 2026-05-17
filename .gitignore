@@ -1,0 +1,24 @@
+# Build output
+**/bin/
+**/obj/
+
+# IDE / user-local files
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.rsuser
+
+# Logs and review artifacts
+*.log
+.review-*.log
+
+# Local scripts / tool scratch files
+false
+manual_verify_start.ps1
+
+# Sample host local runtime database
+src/EfUi.SampleHost/sample.db
+src/EfUi.SampleHost/sample.db-shm
+src/EfUi.SampleHost/sample.db-wal
