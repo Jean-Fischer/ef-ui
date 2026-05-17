@@ -8,7 +8,8 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
     public IReadOnlyList<EntityMetadata> GetEntities(DbContext dbContext)
     {
         return dbContext.Model.GetEntityTypes()
-            .Where(x => x.ClrType.IsClass)
+            .Where(entityType => entityType.ClrType.IsClass)
+            .Where(entityType => !IsSharedJoinEntity(entityType))
             .Select(Build)
             .OrderBy(x => x.RouteName)
             .ToList();
@@ -21,8 +22,13 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
 
     private static EntityMetadata Build(IEntityType entityType)
     {
-        var keyProperty = entityType.FindPrimaryKey()?.Properties.SingleOrDefault()
-            ?? throw new InvalidOperationException($"Entity '{entityType.ClrType.Name}' must have a single primary key.");
+        var keyProperties = entityType.FindPrimaryKey()?.Properties;
+        if (keyProperties is null || keyProperties.Count != 1)
+        {
+            throw new InvalidOperationException($"Entity '{entityType.ClrType.Name}' must have a single primary key.");
+        }
+
+        var keyProperty = keyProperties[0];
 
         var scalarProperties = entityType.GetProperties()
             .Select(property => new EntityPropertyMetadata(
@@ -43,6 +49,10 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             scalarProperties,
             scalarProperties.Where(x => x.IsEditableOnUpdate).ToList());
     }
+
+    private static bool IsSharedJoinEntity(IEntityType entityType)
+        => entityType.ClrType == typeof(Dictionary<string, object>)
+           && entityType.FindPrimaryKey()?.Properties.Count != 1;
 
     private static string GetRouteName(IEntityType entityType)
     {

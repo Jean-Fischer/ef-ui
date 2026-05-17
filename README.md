@@ -6,7 +6,25 @@
 dotnet run --project src/EfUi.SampleHost
 ```
 
-Open `http://localhost:5000/efui` or the HTTPS URL shown by ASP.NET Core.
+Open `http://localhost:5000/` or the HTTPS URL shown by ASP.NET Core.
+
+Available routes:
+- `/` — tiny landing page
+- `/simple` — sample database
+- `/chinook` — Chinook database
+
+To verify the sample host in production mode:
+
+```powershell
+$env:ASPNETCORE_ENVIRONMENT = "Production"
+$env:ASPNETCORE_URLS = "http://127.0.0.1:5055"
+dotnet run --project src/EfUi.SampleHost --no-launch-profile
+```
+
+Then open:
+- `http://127.0.0.1:5055/`
+- `http://127.0.0.1:5055/simple`
+- `http://127.0.0.1:5055/chinook`
 
 ## Test
 

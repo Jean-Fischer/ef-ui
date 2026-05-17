@@ -19,18 +19,29 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Get_root_returns_links_to_all_ui_mounts()
+    {
+        var response = await _client.GetAsync("/");
+        var html = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        html.Should().Contain("/simple");
+        html.Should().Contain("/chinook");
+    }
+
+    [Fact]
     public async Task Get_index_returns_entity_links()
     {
-        var html = await _client.GetStringAsync("/efui");
+        var html = await _client.GetStringAsync("/simple");
 
-        html.Should().Contain("/efui/users");
-        html.Should().Contain("/efui/groups");
+        html.Should().Contain("/simple/users");
+        html.Should().Contain("/simple/groups");
     }
 
     [Fact]
     public async Task Get_entity_page_renders_table()
     {
-        var html = await _client.GetStringAsync("/efui/users");
+        var html = await _client.GetStringAsync("/simple/users");
 
         html.Should().Contain("<table");
         html.Should().Contain("Ada");
@@ -39,7 +50,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     [Fact]
     public async Task Get_new_form_renders_only_editable_fields()
     {
-        var html = await _client.GetStringAsync("/efui/users/new");
+        var html = await _client.GetStringAsync("/simple/users/new");
 
         html.Should().Contain("name=\"Name\"");
         html.Should().NotContain("name=\"Id\"");
@@ -51,9 +62,9 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var email = $"edit-{Guid.NewGuid():N}@example.com";
         var id = await CreateUserAndGetIdAsync("Edit Me", email);
 
-        var html = await _client.GetStringAsync($"/efui/users/{id}/edit");
+        var html = await _client.GetStringAsync($"/simple/users/{id}/edit");
 
-        html.Should().Contain($"action=\"/efui/users/{id}\"");
+        html.Should().Contain($"action=\"/simple/users/{id}\"");
         html.Should().Contain("name=\"Name\" value=\"Edit Me\"");
         html.Should().Contain($"name=\"Email\" value=\"{email}\"");
         html.Should().Contain("name=\"IsActive\" value=\"True\"");
@@ -63,7 +74,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     [Fact]
     public async Task Post_create_user_redirects_back_to_entity_page()
     {
-        var response = await _client.PostAsync("/efui/users", new FormUrlEncodedContent(new Dictionary<string, string>
+        var response = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["Name"] = "Grace",
             ["Email"] = $"grace-{Guid.NewGuid():N}@example.com",
@@ -74,7 +85,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
 
         response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
         response.Headers.Location.Should().NotBeNull();
-        response.Headers.Location!.ToString().Should().Be("/efui/users");
+        response.Headers.Location!.ToString().Should().Be("/simple/users");
     }
 
     [Fact]
@@ -84,7 +95,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var updatedEmail = $"after-{Guid.NewGuid():N}@example.com";
         var id = await CreateUserAndGetIdAsync("Before Update", originalEmail);
 
-        var response = await _client.PostAsync($"/efui/users/{id}", new FormUrlEncodedContent(new Dictionary<string, string>
+        var response = await _client.PostAsync($"/simple/users/{id}", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["Name"] = "After Update",
             ["Email"] = updatedEmail,
@@ -95,9 +106,9 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
 
         response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
         response.Headers.Location.Should().NotBeNull();
-        response.Headers.Location!.ToString().Should().Be("/efui/users");
+        response.Headers.Location!.ToString().Should().Be("/simple/users");
 
-        var html = await _client.GetStringAsync($"/efui/users/{id}/edit");
+        var html = await _client.GetStringAsync($"/simple/users/{id}/edit");
         html.Should().Contain("name=\"Name\" value=\"After Update\"");
         html.Should().Contain($"name=\"Email\" value=\"{updatedEmail}\"");
         html.Should().Contain("name=\"IsActive\" value=\"False\"");
@@ -108,7 +119,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     public async Task Post_create_failure_preserves_submitted_values()
     {
         var email = $"invalid-{Guid.NewGuid():N}@example.com";
-        var response = await _client.PostAsync("/efui/users", new FormUrlEncodedContent(new Dictionary<string, string>
+        var response = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["Name"] = "Keep Me",
             ["Email"] = email,
@@ -131,7 +142,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var submittedEmail = $"submitted-{Guid.NewGuid():N}@example.com";
         var id = await CreateUserAndGetIdAsync("Original Name", originalEmail);
 
-        var response = await _client.PostAsync($"/efui/users/{id}", new FormUrlEncodedContent(new Dictionary<string, string>
+        var response = await _client.PostAsync($"/simple/users/{id}", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["Name"] = "Edited Name",
             ["Email"] = submittedEmail,
@@ -155,7 +166,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var email = $"delete-{Guid.NewGuid():N}@example.com";
         var id = await CreateUserAndGetIdAsync("Delete Me", email);
 
-        var response = await _client.PostAsync($"/efui/users/{id}/delete", new FormUrlEncodedContent(new Dictionary<string, string>()));
+        var response = await _client.PostAsync($"/simple/users/{id}/delete", new FormUrlEncodedContent(new Dictionary<string, string>()));
 
         response.IsSuccessStatusCode.Should().BeTrue();
         var updatedHtml = await response.Content.ReadAsStringAsync();
@@ -165,14 +176,14 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     [Fact]
     public async Task Post_delete_missing_row_returns_not_found()
     {
-        var response = await _client.PostAsync("/efui/users/999999/delete", new FormUrlEncodedContent(new Dictionary<string, string>()));
+        var response = await _client.PostAsync("/simple/users/999999/delete", new FormUrlEncodedContent(new Dictionary<string, string>()));
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     private async Task<string> CreateUserAndGetIdAsync(string name, string email)
     {
-        var createResponse = await _client.PostAsync("/efui/users", new FormUrlEncodedContent(new Dictionary<string, string>
+        var createResponse = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["Name"] = name,
             ["Email"] = email,
@@ -183,8 +194,8 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
 
         createResponse.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
 
-        var html = await _client.GetStringAsync("/efui/users");
-        var match = Regex.Match(html, $@"<tr>(?:(?!</tr>).)*{Regex.Escape(email)}(?:(?!</tr>).)*/efui/users/(?<id>\d+)/edit", RegexOptions.Singleline);
+        var html = await _client.GetStringAsync("/simple/users");
+        var match = Regex.Match(html, $@"<tr>(?:(?!</tr>).)*{Regex.Escape(email)}(?:(?!</tr>).)*/simple/users/(?<id>\d+)/edit", RegexOptions.Singleline);
         match.Success.Should().BeTrue();
         return match.Groups["id"].Value;
     }

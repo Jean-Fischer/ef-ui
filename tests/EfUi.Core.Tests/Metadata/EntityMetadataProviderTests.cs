@@ -80,6 +80,29 @@ public class EntityMetadataProviderTests
         asset.EditableProperties.Select(x => x.Name).Should().NotContain("Payload");
     }
 
+    [Fact]
+    public void GetEntities_skips_shared_join_entities_without_single_primary_keys()
+    {
+        using var db = CreateManyToManyDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var entities = sut.GetEntities(db).Select(x => x.RouteName).ToList();
+
+        entities.Should().BeEquivalentTo(["playlists", "tracks"]);
+    }
+
+    [Fact]
+    public void GetEntities_throws_for_regular_entities_with_composite_primary_keys()
+    {
+        using var db = CreateCompositeKeyDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var act = () => sut.GetEntities(db);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("Entity 'Membership' must have a single primary key.*");
+    }
+
     private static SampleModelDbContext CreateDb()
     {
         var options = new DbContextOptionsBuilder<SampleModelDbContext>()
@@ -128,6 +151,30 @@ public class EntityMetadataProviderTests
         return db;
     }
 
+    private static ManyToManyDbContext CreateManyToManyDb()
+    {
+        var options = new DbContextOptionsBuilder<ManyToManyDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        var db = new ManyToManyDbContext(options);
+        db.Database.OpenConnection();
+        db.Database.EnsureCreated();
+        return db;
+    }
+
+    private static CompositeKeyDbContext CreateCompositeKeyDb()
+    {
+        var options = new DbContextOptionsBuilder<CompositeKeyDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        var db = new CompositeKeyDbContext(options);
+        db.Database.OpenConnection();
+        db.Database.EnsureCreated();
+        return db;
+    }
+
     private sealed class RouteNameDbContext(DbContextOptions<RouteNameDbContext> options) : DbContext(options)
     {
         public DbSet<User> Accounts => Set<User>();
@@ -157,6 +204,39 @@ public class EntityMetadataProviderTests
         }
     }
 
+    private sealed class ManyToManyDbContext(DbContextOptions<ManyToManyDbContext> options) : DbContext(options)
+    {
+        public DbSet<Playlist> Playlists => Set<Playlist>();
+
+        public DbSet<Track> Tracks => Set<Track>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Playlist>()
+                .HasMany(x => x.Tracks)
+                .WithMany(x => x.Playlists)
+                .UsingEntity<Dictionary<string, object>>(
+                    "playlist_track",
+                    right => right.HasOne<Track>().WithMany().HasForeignKey("TrackId"),
+                    left => left.HasOne<Playlist>().WithMany().HasForeignKey("PlaylistId"),
+                    join => join.HasKey("PlaylistId", "TrackId"));
+        }
+    }
+
+    private sealed class CompositeKeyDbContext(DbContextOptions<CompositeKeyDbContext> options) : DbContext(options)
+    {
+        public DbSet<Membership> Memberships => Set<Membership>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Membership>(builder =>
+            {
+                builder.ToTable("memberships");
+                builder.HasKey(x => new { x.UserId, x.GroupId });
+            });
+        }
+    }
+
     private sealed class Asset
     {
         public int Id { get; set; }
@@ -169,5 +249,25 @@ public class EntityMetadataProviderTests
         public string TenantKey { get; set; } = string.Empty;
         public int GroupId { get; set; }
         public string Name { get; set; } = string.Empty;
+    }
+
+    private sealed class Playlist
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public ICollection<Track> Tracks { get; set; } = [];
+    }
+
+    private sealed class Track
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public ICollection<Playlist> Playlists { get; set; } = [];
+    }
+
+    private sealed class Membership
+    {
+        public int UserId { get; set; }
+        public int GroupId { get; set; }
     }
 }
