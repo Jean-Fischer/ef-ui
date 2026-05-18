@@ -72,7 +72,7 @@ public static class EfUiApplicationBuilderExtensions
             return Results.NotFound();
         }
 
-        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, ReadRows(dbContext, metadata.ClrType));
+        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, CreateRenderedListRows(metadata, ReadRows(dbContext, metadata.ClrType)));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -196,7 +196,7 @@ public static class EfUiApplicationBuilderExtensions
             return Results.BadRequest(result.Errors);
         }
 
-        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, ReadRows(dbContext, metadata.ClrType));
+        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, CreateRenderedListRows(metadata, ReadRows(dbContext, metadata.ClrType)));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -219,6 +219,13 @@ public static class EfUiApplicationBuilderExtensions
         var queryable = (System.Collections.IEnumerable)setMethod.MakeGenericMethod(entityClrType).Invoke(dbContext, null)!;
         return queryable.Cast<object>().ToList();
     }
+
+    private static IReadOnlyList<RenderedListRow> CreateRenderedListRows(EntityMetadata metadata, IReadOnlyList<object> rows)
+        => rows.Select(row => new RenderedListRow(
+            FormatValue(row.GetType().GetProperty(metadata.PrimaryKeyProperty.Name)?.GetValue(row)),
+            metadata.AllProperties.ToDictionary(
+                property => property.Name,
+                property => FormatValue(row.GetType().GetProperty(property.Name)?.GetValue(row))))).ToList();
 
     private static object? TryReadKey(DbContext dbContext, EntityMetadata metadata, string id)
     {

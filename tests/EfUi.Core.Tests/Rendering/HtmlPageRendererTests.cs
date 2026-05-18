@@ -113,6 +113,18 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
+    public void HtmlPageRenderer_exposes_only_rendered_list_row_RenderList_overload()
+    {
+        var overloads = typeof(HtmlPageRenderer)
+            .GetMethods()
+            .Where(method => method.Name == nameof(HtmlPageRenderer.RenderList))
+            .ToArray();
+
+        overloads.Should().ContainSingle();
+        overloads[0].GetParameters()[2].ParameterType.Should().Be(typeof(IReadOnlyList<RenderedListRow>));
+    }
+
+    [Fact]
     public void RenderForm_omits_store_generated_primary_key_fields_on_create()
     {
         var sut = new HtmlPageRenderer();

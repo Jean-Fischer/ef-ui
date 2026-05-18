@@ -61,13 +61,6 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         return html.ToString();
     }
 
-    public string RenderList(string routePrefix, EntityMetadata entity, IReadOnlyList<object> rows)
-        => RenderList(routePrefix, entity, rows.Select(row => new RenderedListRow(
-            FormatValue(row.GetType().GetProperty(entity.PrimaryKeyProperty.Name)?.GetValue(row)),
-            entity.AllProperties.ToDictionary(
-                property => property.Name,
-                property => FormatValue(row.GetType().GetProperty(property.Name)?.GetValue(row))))).ToList());
-
     public string RenderForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
         => RenderEditForm(routePrefix, entity, model, isCreate, errors, null, submittedValues, fieldOptions);
 
