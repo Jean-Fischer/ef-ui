@@ -72,7 +72,8 @@ public static class EfUiApplicationBuilderExtensions
             return Results.NotFound();
         }
 
-        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, CreateRenderedListRows(metadata, ReadRows(dbContext, metadata.ClrType)));
+        var rows = ReadRows(dbContext, metadata.ClrType);
+        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, CreateRenderedListRows(dbContext, metadata, rows));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -196,7 +197,8 @@ public static class EfUiApplicationBuilderExtensions
             return Results.BadRequest(result.Errors);
         }
 
-        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, CreateRenderedListRows(metadata, ReadRows(dbContext, metadata.ClrType)));
+        var rows = ReadRows(dbContext, metadata.ClrType);
+        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, CreateRenderedListRows(dbContext, metadata, rows));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -220,12 +222,64 @@ public static class EfUiApplicationBuilderExtensions
         return queryable.Cast<object>().ToList();
     }
 
-    private static IReadOnlyList<RenderedListRow> CreateRenderedListRows(EntityMetadata metadata, IReadOnlyList<object> rows)
-        => rows.Select(row => new RenderedListRow(
+    private static IReadOnlyList<RenderedListRow> CreateRenderedListRows(DbContext dbContext, EntityMetadata metadata, IReadOnlyList<object> rows)
+    {
+        var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata);
+
+        return rows.Select(row => new RenderedListRow(
             FormatValue(row.GetType().GetProperty(metadata.PrimaryKeyProperty.Name)?.GetValue(row)),
             metadata.AllProperties.ToDictionary(
                 property => property.Name,
-                property => FormatValue(row.GetType().GetProperty(property.Name)?.GetValue(row))))).ToList();
+                property => GetRenderedListCellValue(row, property.Name, relatedValueLookups)))).ToList();
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> BuildRelatedValueLookups(DbContext dbContext, EntityMetadata metadata)
+    {
+        var entityType = dbContext.Model.FindEntityType(metadata.ClrType);
+        if (entityType is null)
+        {
+            return new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
+        }
+
+        var visiblePropertyNames = metadata.AllProperties
+            .Select(property => property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        var lookups = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
+
+        foreach (var foreignKey in entityType.GetForeignKeys().Where(foreignKey => foreignKey.Properties.Count == 1))
+        {
+            var foreignKeyProperty = foreignKey.Properties[0];
+            if (!visiblePropertyNames.Contains(foreignKeyProperty.Name))
+            {
+                continue;
+            }
+
+            var relatedPrimaryKey = foreignKey.PrincipalEntityType.FindPrimaryKey()?.Properties.SingleOrDefault();
+            if (relatedPrimaryKey is null)
+            {
+                continue;
+            }
+
+            lookups[foreignKeyProperty.Name] = ReadRows(dbContext, foreignKey.PrincipalEntityType.ClrType)
+                .ToDictionary(
+                    row => FormatValue(row.GetType().GetProperty(relatedPrimaryKey.Name)?.GetValue(row)),
+                    row => GetRelatedEntityLabel(row, relatedPrimaryKey.Name),
+                    StringComparer.Ordinal);
+        }
+
+        return lookups;
+    }
+
+    private static string GetRenderedListCellValue(object row, string propertyName, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
+    {
+        var rawValue = row.GetType().GetProperty(propertyName)?.GetValue(row);
+        var formattedValue = FormatValue(rawValue);
+
+        return relatedValueLookups.TryGetValue(propertyName, out var lookup)
+               && lookup.TryGetValue(formattedValue, out var label)
+            ? label
+            : formattedValue;
+    }
 
     private static object? TryReadKey(DbContext dbContext, EntityMetadata metadata, string id)
     {

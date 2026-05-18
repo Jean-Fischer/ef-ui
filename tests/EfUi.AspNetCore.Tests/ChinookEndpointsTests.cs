@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.RegularExpressions;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
@@ -32,6 +33,15 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         var html = await _client.GetStringAsync("/chinook");
 
         html.Should().NotContain("/chinook/flyway_schema_history");
+    }
+
+    [Fact]
+    public async Task Get_albums_list_uses_related_artist_labels_instead_of_raw_ids()
+    {
+        var html = await _client.GetStringAsync("/chinook/albums");
+
+        Regex.IsMatch(html, @"<tr><td>1</td><td>AC/DC</td><td>For Those About To Rock We Salute You</td>", RegexOptions.Singleline).Should().BeTrue();
+        Regex.IsMatch(html, @"<tr><td>1</td><td>1</td><td>For Those About To Rock We Salute You</td>", RegexOptions.Singleline).Should().BeFalse();
     }
 
     [Fact]

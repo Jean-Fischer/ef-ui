@@ -30,21 +30,32 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
-    public async Task Get_index_returns_entity_links()
+    public async Task Get_index_returns_entity_links_with_themed_shell()
     {
         var html = await _client.GetStringAsync("/simple");
 
+        html.Should().Contain("href=\"/simple/assets/efui.css\"");
+        html.Should().Contain("class=\"efui-body\"");
+        html.Should().Contain("class=\"efui-page\"");
+        html.Should().Contain("class=\"efui-surface\"");
         html.Should().Contain("/simple/users");
         html.Should().Contain("/simple/groups");
     }
 
     [Fact]
-    public async Task Get_entity_page_renders_table()
+    public async Task Get_entity_page_renders_themed_table_with_related_labels()
     {
         var html = await _client.GetStringAsync("/simple/users");
 
-        html.Should().Contain("<table");
-        html.Should().Contain("Ada");
+        html.Should().Contain("href=\"/simple/assets/efui.css\"");
+        html.Should().Contain("class=\"efui-body\"");
+        html.Should().Contain("class=\"efui-page\"");
+        html.Should().Contain("class=\"efui-surface\"");
+        html.Should().Contain("class=\"efui-table\"");
+        Regex.IsMatch(html, @"<tr><td>1</td><td>.*?</td><td>ada@example\.com</td><td>Admins</td><td>True</td><td>Ada</td>", RegexOptions.Singleline).Should().BeTrue();
+        Regex.IsMatch(html, @"<tr><td>2</td><td>.*?</td><td>linus@example\.com</td><td>Guests</td><td>False</td><td>Linus</td>", RegexOptions.Singleline).Should().BeTrue();
+        Regex.IsMatch(html, @"<tr><td>1</td><td>.*?</td><td>ada@example\.com</td><td>1</td><td>True</td><td>Ada</td>", RegexOptions.Singleline).Should().BeFalse();
+        Regex.IsMatch(html, @"<tr><td>2</td><td>.*?</td><td>linus@example\.com</td><td>2</td><td>False</td><td>Linus</td>", RegexOptions.Singleline).Should().BeFalse();
     }
 
     [Fact]
