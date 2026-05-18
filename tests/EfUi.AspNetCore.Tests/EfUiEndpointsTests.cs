@@ -59,7 +59,15 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     [Fact]
     public async Task Get_entity_page_renders_themed_table_with_related_labels()
     {
+        var adminsEmail = $"related-label-admins-{Guid.NewGuid():N}@example.com";
+        var guestsEmail = $"related-label-guests-{Guid.NewGuid():N}@example.com";
+
+        await CreateUserAndGetIdAsync("Related Label Admin", adminsEmail, group: "1");
+        await CreateUserAndGetIdAsync("Related Label Guest", guestsEmail, group: "2");
+
         var html = await _client.GetStringAsync("/simple/users");
+        var adminsRow = GetTableRowContainingValue(html, adminsEmail);
+        var guestsRow = GetTableRowContainingValue(html, guestsEmail);
 
         html.Should().Contain("href=\"/simple/assets/efui.css\"");
         html.Should().Contain("class=\"efui-body\"");
@@ -72,10 +80,10 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("class=\"efui-row-actions\"");
         html.Should().Contain("class=\"efui-row-action-link\"");
         html.Should().Contain("class=\"efui-row-action-button\"");
-        html.Should().Contain(">Admins<");
-        html.Should().Contain(">Guests<");
-        html.Should().Contain("ada@example.com");
-        html.Should().Contain("linus@example.com");
+        adminsRow.Should().Contain($"<td>{adminsEmail}</td><td>Admins</td><td>True</td><td>Related Label Admin</td>");
+        adminsRow.Should().NotContain($"<td>{adminsEmail}</td><td>1</td><td>True</td><td>Related Label Admin</td>");
+        guestsRow.Should().Contain($"<td>{guestsEmail}</td><td>Guests</td><td>True</td><td>Related Label Guest</td>");
+        guestsRow.Should().NotContain($"<td>{guestsEmail}</td><td>2</td><td>True</td><td>Related Label Guest</td>");
     }
 
     [Fact]
@@ -269,7 +277,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    private async Task<string> CreateUserAndGetIdAsync(string name, string email)
+    private async Task<string> CreateUserAndGetIdAsync(string name, string email, string group = "1")
     {
         var createResponse = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(new Dictionary<string, string>
         {
@@ -277,14 +285,22 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
             ["Email"] = email,
             ["IsActive"] = "true",
             ["CreatedAt"] = "2026-05-17T10:00:00",
-            ["Group"] = "1"
+            ["Group"] = group
         }));
 
         createResponse.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
 
         var html = await _client.GetStringAsync("/simple/users");
-        var match = Regex.Match(html, $@"<tr>(?:(?!</tr>).)*{Regex.Escape(email)}(?:(?!</tr>).)*/simple/users/(?<id>\d+)/edit", RegexOptions.Singleline);
+        var row = GetTableRowContainingValue(html, email);
+        var match = Regex.Match(row, @"/simple/users/(?<id>\d+)/edit");
         match.Success.Should().BeTrue();
         return match.Groups["id"].Value;
+    }
+
+    private static string GetTableRowContainingValue(string html, string value)
+    {
+        var match = Regex.Match(html, $@"<tr>(?:(?!</tr>).)*{Regex.Escape(value)}(?:(?!</tr>).)*</tr>", RegexOptions.Singleline);
+        match.Success.Should().BeTrue();
+        return match.Value;
     }
 }
