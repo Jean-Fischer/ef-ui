@@ -36,9 +36,9 @@ public class HtmlPageRendererTests
 
         html.Should().Contain("href=\"/efui/assets/efui.css\"");
         html.Should().Contain("class=\"efui-body\"");
-        html.Should().Contain("class=\"efui-page\"");
-        html.Should().Contain("class=\"efui-surface\"");
-        html.Should().Contain("class=\"efui-index-list\"");
+        html.Should().Contain("<main class=\"efui-page\">");
+        html.Should().Contain("<section class=\"efui-surface\">");
+        html.Should().Contain("<ul class=\"efui-index-list efui-link-grid\">");
     }
 
     [Fact]
@@ -71,9 +71,15 @@ public class HtmlPageRendererTests
 
         html.Should().Contain("href=\"/efui/assets/efui.css\"");
         html.Should().Contain("class=\"efui-body\"");
-        html.Should().Contain("class=\"efui-page\"");
-        html.Should().Contain("class=\"efui-surface\"");
-        html.Should().Contain("class=\"efui-table\"");
+        html.Should().Contain("<main class=\"efui-page\">");
+        html.Should().Contain("<section class=\"efui-surface\">");
+        html.Should().Contain("<div class=\"efui-page-actions\">");
+        html.Should().Contain("<a class=\"efui-primary-link\" href=\"/efui/users/new\">Create New</a>");
+        html.Should().Contain("<div class=\"efui-table-wrapper\">");
+        html.Should().Contain("<table class=\"efui-table\">");
+        html.Should().Contain("<td class=\"efui-row-actions\">");
+        html.Should().Contain("<a class=\"efui-row-action-link\" href=\"/efui/users/7/edit\">Edit</a>");
+        html.Should().Contain("<button class=\"efui-row-action-button\" type=\"submit\">Delete</button>");
     }
 
     [Fact]

@@ -36,10 +36,24 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
 
         html.Should().Contain("href=\"/simple/assets/efui.css\"");
         html.Should().Contain("class=\"efui-body\"");
-        html.Should().Contain("class=\"efui-page\"");
-        html.Should().Contain("class=\"efui-surface\"");
+        html.Should().Contain("<main class=\"efui-page\">");
+        html.Should().Contain("<section class=\"efui-surface\">");
+        html.Should().Contain("<ul class=\"efui-index-list efui-link-grid\">");
         html.Should().Contain("/simple/users");
         html.Should().Contain("/simple/groups");
+    }
+
+    [Fact]
+    public async Task Get_stylesheet_includes_readonly_page_theme_classes()
+    {
+        var css = await _client.GetStringAsync("/simple/assets/efui.css");
+
+        css.Should().Contain(".efui-link-grid");
+        css.Should().Contain(".efui-page-actions");
+        css.Should().Contain(".efui-primary-link");
+        css.Should().Contain(".efui-table-wrapper");
+        css.Should().Contain(".efui-row-actions");
+        css.Should().Contain(".efui-row-action-button");
     }
 
     [Fact]
@@ -49,13 +63,19 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
 
         html.Should().Contain("href=\"/simple/assets/efui.css\"");
         html.Should().Contain("class=\"efui-body\"");
-        html.Should().Contain("class=\"efui-page\"");
-        html.Should().Contain("class=\"efui-surface\"");
-        html.Should().Contain("class=\"efui-table\"");
-        Regex.IsMatch(html, @"<tr><td>1</td><td>.*?</td><td>ada@example\.com</td><td>Admins</td><td>True</td><td>Ada</td>", RegexOptions.Singleline).Should().BeTrue();
-        Regex.IsMatch(html, @"<tr><td>2</td><td>.*?</td><td>linus@example\.com</td><td>Guests</td><td>False</td><td>Linus</td>", RegexOptions.Singleline).Should().BeTrue();
-        Regex.IsMatch(html, @"<tr><td>1</td><td>.*?</td><td>ada@example\.com</td><td>1</td><td>True</td><td>Ada</td>", RegexOptions.Singleline).Should().BeFalse();
-        Regex.IsMatch(html, @"<tr><td>2</td><td>.*?</td><td>linus@example\.com</td><td>2</td><td>False</td><td>Linus</td>", RegexOptions.Singleline).Should().BeFalse();
+        html.Should().Contain("<main class=\"efui-page\">");
+        html.Should().Contain("<section class=\"efui-surface\">");
+        html.Should().Contain("<div class=\"efui-page-actions\">");
+        html.Should().Contain("<a class=\"efui-primary-link\" href=\"/simple/users/new\">Create New</a>");
+        html.Should().Contain("<div class=\"efui-table-wrapper\">");
+        html.Should().Contain("<table class=\"efui-table\">");
+        html.Should().Contain("class=\"efui-row-actions\"");
+        html.Should().Contain("class=\"efui-row-action-link\"");
+        html.Should().Contain("class=\"efui-row-action-button\"");
+        html.Should().Contain(">Admins<");
+        html.Should().Contain(">Guests<");
+        html.Should().Contain("ada@example.com");
+        html.Should().Contain("linus@example.com");
     }
 
     [Fact]

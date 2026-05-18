@@ -12,7 +12,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         AppendDocumentStart(html, routePrefix, "efui-page");
         html.Append("<section class=\"efui-surface\">");
         html.Append("<h1>EF UI</h1>");
-        html.Append("<ul class=\"efui-index-list\">");
+        html.Append("<ul class=\"efui-index-list efui-link-grid\">");
 
         foreach (var entity in entities)
         {
@@ -29,7 +29,10 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         AppendDocumentStart(html, routePrefix, "efui-page");
         html.Append("<section class=\"efui-surface\">");
         html.Append($"<h1>{WebUtility.HtmlEncode(entity.DisplayName)}</h1>");
-        html.Append($"<a href=\"{routePrefix}/{entity.RouteName}/new\">Create New</a>");
+        html.Append("<div class=\"efui-page-actions\">");
+        html.Append($"<a class=\"efui-primary-link\" href=\"{routePrefix}/{entity.RouteName}/new\">Create New</a>");
+        html.Append("</div>");
+        html.Append("<div class=\"efui-table-wrapper\">");
         html.Append("<table class=\"efui-table\"><thead><tr>");
 
         foreach (var property in entity.AllProperties)
@@ -50,14 +53,14 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             }
 
             var escapedKey = EscapeRouteSegment(row.Key);
-            html.Append("<td>");
-            html.Append($"<a href=\"{routePrefix}/{entity.RouteName}/{escapedKey}/edit\">Edit</a>");
-            html.Append($"<form method=\"post\" action=\"{routePrefix}/{entity.RouteName}/{escapedKey}/delete\" style=\"display:inline\">");
-            html.Append("<button type=\"submit\">Delete</button></form>");
+            html.Append("<td class=\"efui-row-actions\">");
+            html.Append($"<a class=\"efui-row-action-link\" href=\"{routePrefix}/{entity.RouteName}/{escapedKey}/edit\">Edit</a>");
+            html.Append($"<form class=\"efui-row-action-form\" method=\"post\" action=\"{routePrefix}/{entity.RouteName}/{escapedKey}/delete\">");
+            html.Append("<button class=\"efui-row-action-button\" type=\"submit\">Delete</button></form>");
             html.Append("</td></tr>");
         }
 
-        html.Append("</tbody></table></section></main></body></html>");
+        html.Append("</tbody></table></div></section></main></body></html>");
         return html.ToString();
     }
 

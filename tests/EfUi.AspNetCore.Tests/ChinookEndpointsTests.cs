@@ -19,10 +19,14 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     }
 
     [Fact]
-    public async Task Get_chinook_index_returns_entity_links()
+    public async Task Get_chinook_index_returns_entity_links_with_themed_shell()
     {
         var html = await _client.GetStringAsync("/chinook");
 
+        html.Should().Contain("href=\"/chinook/assets/efui.css\"");
+        html.Should().Contain("<main class=\"efui-page\">");
+        html.Should().Contain("<section class=\"efui-surface\">");
+        html.Should().Contain("<ul class=\"efui-index-list efui-link-grid\">");
         html.Should().Contain("/chinook/genres");
         html.Should().Contain("/chinook/media_types");
     }
@@ -36,10 +40,17 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     }
 
     [Fact]
-    public async Task Get_albums_list_uses_related_artist_labels_instead_of_raw_ids()
+    public async Task Get_albums_list_uses_related_artist_labels_with_themed_table_markup()
     {
         var html = await _client.GetStringAsync("/chinook/albums");
 
+        html.Should().Contain("<div class=\"efui-page-actions\">");
+        html.Should().Contain("<a class=\"efui-primary-link\" href=\"/chinook/albums/new\">Create New</a>");
+        html.Should().Contain("<div class=\"efui-table-wrapper\">");
+        html.Should().Contain("<table class=\"efui-table\">");
+        html.Should().Contain("class=\"efui-row-actions\"");
+        html.Should().Contain("class=\"efui-row-action-link\"");
+        html.Should().Contain("class=\"efui-row-action-button\"");
         Regex.IsMatch(html, @"<tr><td>1</td><td>AC/DC</td><td>For Those About To Rock We Salute You</td>", RegexOptions.Singleline).Should().BeTrue();
         Regex.IsMatch(html, @"<tr><td>1</td><td>1</td><td>For Those About To Rock We Salute You</td>", RegexOptions.Singleline).Should().BeFalse();
     }
