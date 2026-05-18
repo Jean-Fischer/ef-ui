@@ -9,7 +9,7 @@ public static class EntityDisplayLabelResolver
         var rowType = row.GetType();
         foreach (var propertyName in new[] { "Name", "Title", "Email" })
         {
-            var value = rowType.GetProperty(propertyName)?.GetValue(row) as string;
+            var value = rowType.GetProperty(propertyName)?.GetValue(row)?.ToString();
             if (!string.IsNullOrWhiteSpace(value))
             {
                 return value;

@@ -293,7 +293,7 @@ public static class EfUiApplicationBuilderExtensions
 
         var keyValue = row.GetType().GetProperty(primaryKey.Name)?.GetValue(row);
         var value = FormatValue(keyValue);
-        var label = GetRelatedEntityLabel(row, primaryKey.Name, value);
+        var label = GetRelatedEntityLabel(row, primaryKey.Name);
         var selected = selectedValues.Contains(value);
 
         if (field.Kind == EditableFieldKind.Collection
@@ -308,7 +308,7 @@ public static class EfUiApplicationBuilderExtensions
                 var owner = dbContext.Find(metadata.ClrType, ownerValue);
                 var ownerLabel = owner is null
                     ? FormatValue(ownerValue)
-                    : GetRelatedEntityLabel(owner, metadata.PrimaryKeyProperty.Name, FormatValue(ownerValue));
+                    : GetRelatedEntityLabel(owner, metadata.PrimaryKeyProperty.Name);
 
                 return new RelatedEntityOption(value, label, selected, Disabled: true, Description: $"assigned to {ownerLabel}");
             }
@@ -317,20 +317,8 @@ public static class EfUiApplicationBuilderExtensions
         return new RelatedEntityOption(value, label, selected);
     }
 
-    private static string GetRelatedEntityLabel(object row, string primaryKeyPropertyName, string primaryKeyValue)
-    {
-        foreach (var preferredName in new[] { "Name", "Title", "Email" })
-        {
-            var property = row.GetType().GetProperty(preferredName);
-            var value = property?.GetValue(row);
-            if (value is not null && !string.IsNullOrWhiteSpace(value.ToString()))
-            {
-                return value.ToString()!;
-            }
-        }
-
-        return primaryKeyValue;
-    }
+    private static string GetRelatedEntityLabel(object row, string primaryKeyPropertyName)
+        => EntityDisplayLabelResolver.Resolve(row, primaryKeyPropertyName);
 
     private static HashSet<string> GetSelectedValues(DbContext dbContext, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string[]>? submittedValues)
     {

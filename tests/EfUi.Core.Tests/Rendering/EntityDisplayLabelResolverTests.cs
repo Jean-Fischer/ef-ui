@@ -86,6 +86,20 @@ public class EntityDisplayLabelResolverTests
         label.Should().Be("ada@example.com");
     }
 
+    [Fact]
+    public void Resolve_uses_non_string_preferred_property_values_via_to_string()
+    {
+        var row = new RowWithNonStringDisplayProperty
+        {
+            Id = 7,
+            Name = new DisplayValue("Ada Lovelace")
+        };
+
+        var label = EntityDisplayLabelResolver.Resolve(row, nameof(RowWithNonStringDisplayProperty.Id));
+
+        label.Should().Be("Ada Lovelace");
+    }
+
     private sealed class RowWithDisplayProperties
     {
         public int Id { get; init; }
@@ -95,5 +109,17 @@ public class EntityDisplayLabelResolverTests
         public string? Title { get; init; }
 
         public string? Email { get; init; }
+    }
+
+    private sealed class RowWithNonStringDisplayProperty
+    {
+        public int Id { get; init; }
+
+        public object? Name { get; init; }
+    }
+
+    private sealed class DisplayValue(string value)
+    {
+        public override string ToString() => value;
     }
 }
