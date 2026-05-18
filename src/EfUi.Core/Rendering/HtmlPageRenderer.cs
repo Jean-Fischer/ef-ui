@@ -9,24 +9,28 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     public string RenderIndex(string routePrefix, IReadOnlyList<EntityMetadata> entities)
     {
         var html = new StringBuilder();
-        html.Append("<html><body><h1>EF UI</h1><ul>");
+        AppendDocumentStart(html, routePrefix, "efui-page");
+        html.Append("<section class=\"efui-surface\">");
+        html.Append("<h1>EF UI</h1>");
+        html.Append("<ul class=\"efui-index-list\">");
 
         foreach (var entity in entities)
         {
             html.Append($"<li><a href=\"{routePrefix}/{entity.RouteName}\">{WebUtility.HtmlEncode(entity.DisplayName)}</a></li>");
         }
 
-        html.Append("</ul></body></html>");
+        html.Append("</ul></section></main></body></html>");
         return html.ToString();
     }
 
-    public string RenderList(string routePrefix, EntityMetadata entity, IReadOnlyList<object> rows)
+    public string RenderList(string routePrefix, EntityMetadata entity, IReadOnlyList<RenderedListRow> rows)
     {
         var html = new StringBuilder();
-        html.Append("<html><body>");
+        AppendDocumentStart(html, routePrefix, "efui-page");
+        html.Append("<section class=\"efui-surface\">");
         html.Append($"<h1>{WebUtility.HtmlEncode(entity.DisplayName)}</h1>");
         html.Append($"<a href=\"{routePrefix}/{entity.RouteName}/new\">Create New</a>");
-        html.Append("<table><thead><tr>");
+        html.Append("<table class=\"efui-table\"><thead><tr>");
 
         foreach (var property in entity.AllProperties)
         {
@@ -41,12 +45,11 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
             foreach (var property in entity.AllProperties)
             {
-                var value = row.GetType().GetProperty(property.Name)?.GetValue(row);
-                html.Append($"<td>{WebUtility.HtmlEncode(FormatValue(value))}</td>");
+                row.Cells.TryGetValue(property.Name, out var value);
+                html.Append($"<td>{WebUtility.HtmlEncode(value ?? string.Empty)}</td>");
             }
 
-            var key = row.GetType().GetProperty(entity.PrimaryKeyProperty.Name)?.GetValue(row);
-            var escapedKey = EscapeRouteSegment(key);
+            var escapedKey = EscapeRouteSegment(row.Key);
             html.Append("<td>");
             html.Append($"<a href=\"{routePrefix}/{entity.RouteName}/{escapedKey}/edit\">Edit</a>");
             html.Append($"<form method=\"post\" action=\"{routePrefix}/{entity.RouteName}/{escapedKey}/delete\" style=\"display:inline\">");
@@ -54,9 +57,16 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             html.Append("</td></tr>");
         }
 
-        html.Append("</tbody></table></body></html>");
+        html.Append("</tbody></table></section></main></body></html>");
         return html.ToString();
     }
+
+    public string RenderList(string routePrefix, EntityMetadata entity, IReadOnlyList<object> rows)
+        => RenderList(routePrefix, entity, rows.Select(row => new RenderedListRow(
+            FormatValue(row.GetType().GetProperty(entity.PrimaryKeyProperty.Name)?.GetValue(row)),
+            entity.AllProperties.ToDictionary(
+                property => property.Name,
+                property => FormatValue(row.GetType().GetProperty(property.Name)?.GetValue(row))))).ToList());
 
     public string RenderForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
         => RenderEditForm(routePrefix, entity, model, isCreate, errors, null, submittedValues, fieldOptions);
@@ -68,11 +78,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             : $"{routePrefix}/{entity.RouteName}/{EscapeRouteSegment(key)}";
 
         var html = new StringBuilder();
-        html.Append("<html><head>");
-        html.Append("<meta charset=\"utf-8\" />");
-        html.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />");
-        html.Append($"<link rel=\"stylesheet\" href=\"{routePrefix}/assets/efui.css\" />");
-        html.Append("</head><body class=\"efui-body\"><main class=\"efui-form-page\">");
+        AppendDocumentStart(html, routePrefix, "efui-form-page");
         html.Append($"<form class=\"efui-form\" method=\"post\" action=\"{action}\">");
         html.Append($"<h1 class=\"efui-form-title\">{WebUtility.HtmlEncode(entity.DisplayName)}</h1>");
 
@@ -252,6 +258,15 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append("});");
         html.Append("});");
         html.Append("</script>");
+    }
+
+    private static void AppendDocumentStart(StringBuilder html, string routePrefix, string mainClass)
+    {
+        html.Append("<html><head>");
+        html.Append("<meta charset=\"utf-8\" />");
+        html.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />");
+        html.Append($"<link rel=\"stylesheet\" href=\"{routePrefix}/assets/efui.css\" />");
+        html.Append($"</head><body class=\"efui-body\"><main class=\"{mainClass}\">");
     }
 
     private static string EscapeRouteSegment(object? value)
