@@ -1,17 +1,22 @@
 using System.Net;
 using System.Text.RegularExpressions;
+using EfUi.SampleHost.Data;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace EfUi.AspNetCore.Tests;
 
 public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
 {
+    private readonly EfUiApplicationFactory _factory;
     private readonly HttpClient _client;
 
     public EfUiEndpointsTests(EfUiApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false
@@ -30,21 +35,90 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
-    public async Task Get_index_returns_entity_links()
+    public async Task Get_index_returns_entity_links_with_themed_shell()
     {
         var html = await _client.GetStringAsync("/simple");
 
+        html.Should().Contain("href=\"/simple/assets/efui.css\"");
+        html.Should().Contain("class=\"efui-body\"");
+        html.Should().Contain("<main class=\"efui-page\">");
+        html.Should().Contain("<section class=\"efui-surface\">");
+        html.Should().Contain("<ul class=\"efui-index-list efui-link-grid\">");
         html.Should().Contain("/simple/users");
         html.Should().Contain("/simple/groups");
     }
 
     [Fact]
-    public async Task Get_entity_page_renders_table()
+    public async Task Get_stylesheet_includes_readonly_page_theme_classes()
     {
-        var html = await _client.GetStringAsync("/simple/users");
+        var css = await _client.GetStringAsync("/simple/assets/efui.css");
 
-        html.Should().Contain("<table");
-        html.Should().Contain("Ada");
+        css.Should().Contain(".efui-link-grid");
+        css.Should().Contain(".efui-page-actions");
+        css.Should().Contain(".efui-primary-link");
+        css.Should().Contain(".efui-table-wrapper");
+        css.Should().Contain(".efui-row-actions");
+        css.Should().Contain(".efui-row-action-button");
+    }
+
+    [Fact]
+    public async Task Get_entity_page_renders_themed_table_with_related_labels()
+    {
+        var adminsEmail = $"related-label-admins-{Guid.NewGuid():N}@example.com";
+        var guestsEmail = $"related-label-guests-{Guid.NewGuid():N}@example.com";
+
+        await CreateUserAndGetIdAsync("Related Label Admin", adminsEmail, group: "1");
+        await CreateUserAndGetIdAsync("Related Label Guest", guestsEmail, group: "2");
+
+        var html = await _client.GetStringAsync("/simple/users");
+        var adminsRow = GetTableRowContainingValue(html, adminsEmail);
+        var guestsRow = GetTableRowContainingValue(html, guestsEmail);
+
+        html.Should().Contain("href=\"/simple/assets/efui.css\"");
+        html.Should().Contain("class=\"efui-body\"");
+        html.Should().Contain("<main class=\"efui-page\">");
+        html.Should().Contain("<section class=\"efui-surface\">");
+        html.Should().Contain("<div class=\"efui-page-actions\">");
+        html.Should().Contain("<a class=\"efui-primary-link\" href=\"/simple/users/new\">Create New</a>");
+        html.Should().Contain("<div class=\"efui-table-wrapper\">");
+        html.Should().Contain("<table class=\"efui-table\">");
+        html.Should().Contain("class=\"efui-row-actions\"");
+        html.Should().Contain("class=\"efui-row-action-link\"");
+        html.Should().Contain("class=\"efui-row-action-button\"");
+        adminsRow.Should().Contain($"<td>{adminsEmail}</td><td>Admins</td><td>True</td><td>Related Label Admin</td>");
+        adminsRow.Should().NotContain($"<td>{adminsEmail}</td><td>1</td><td>True</td><td>Related Label Admin</td>");
+        guestsRow.Should().Contain($"<td>{guestsEmail}</td><td>Guests</td><td>True</td><td>Related Label Guest</td>");
+        guestsRow.Should().NotContain($"<td>{guestsEmail}</td><td>2</td><td>True</td><td>Related Label Guest</td>");
+    }
+
+    [Fact]
+    public async Task Get_entity_page_shows_raw_foreign_key_value_when_related_row_is_missing()
+    {
+        var email = $"missing-related-{Guid.NewGuid():N}@example.com";
+        var id = await CreateUserAndGetIdAsync("Missing Related Label User", email, group: "1");
+
+        await SetUserGroupIdWithoutRelatedRowAsync(id, 999999);
+
+        var html = await _client.GetStringAsync("/simple/users");
+        var row = GetTableRowContainingValue(html, email);
+
+        row.Should().Contain($"<td>{email}</td><td>999999</td><td>True</td><td>Missing Related Label User</td>");
+        row.Should().NotContain("<td>Admins</td>");
+        row.Should().NotContain("<td>Guests</td>");
+    }
+
+    [Fact]
+    public async Task Get_entity_page_renders_null_foreign_key_as_empty()
+    {
+        var email = $"null-related-{Guid.NewGuid():N}@example.com";
+        await CreateUserAndGetIdAsync("Null Group User", email, group: null);
+
+        var html = await _client.GetStringAsync("/simple/users");
+        var row = GetTableRowContainingValue(html, email);
+
+        row.Should().Contain($"<td>{email}</td><td></td><td>True</td><td>Null Group User</td>");
+        row.Should().NotContain("<td>Admins</td>");
+        row.Should().NotContain("<td>Guests</td>");
     }
 
     [Fact]
@@ -238,22 +312,55 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    private async Task<string> CreateUserAndGetIdAsync(string name, string email)
+    private async Task<string> CreateUserAndGetIdAsync(string name, string email, string? group = "1")
     {
-        var createResponse = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(new Dictionary<string, string>
+        var values = new Dictionary<string, string>
         {
             ["Name"] = name,
             ["Email"] = email,
             ["IsActive"] = "true",
-            ["CreatedAt"] = "2026-05-17T10:00:00",
-            ["Group"] = "1"
-        }));
+            ["CreatedAt"] = "2026-05-17T10:00:00"
+        };
+
+        if (group is not null)
+        {
+            values["Group"] = group;
+        }
+
+        var createResponse = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(values));
 
         createResponse.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
 
         var html = await _client.GetStringAsync("/simple/users");
-        var match = Regex.Match(html, $@"<tr>(?:(?!</tr>).)*{Regex.Escape(email)}(?:(?!</tr>).)*/simple/users/(?<id>\d+)/edit", RegexOptions.Singleline);
+        var row = GetTableRowContainingValue(html, email);
+        var match = Regex.Match(row, @"/simple/users/(?<id>\d+)/edit");
         match.Success.Should().BeTrue();
         return match.Groups["id"].Value;
+    }
+
+    private async Task SetUserGroupIdWithoutRelatedRowAsync(string userId, int missingGroupId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SampleDbContext>();
+        var parsedUserId = int.Parse(userId);
+
+        await db.Database.OpenConnectionAsync();
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = OFF;");
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE Users SET GroupId = {missingGroupId} WHERE Id = {parsedUserId};");
+            await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON;");
+        }
+        finally
+        {
+            await db.Database.CloseConnectionAsync();
+        }
+    }
+
+    private static string GetTableRowContainingValue(string html, string value)
+    {
+        var match = Regex.Match(html, $@"<tr>(?:(?!</tr>).)*{Regex.Escape(value)}(?:(?!</tr>).)*</tr>", RegexOptions.Singleline);
+        match.Success.Should().BeTrue();
+        return match.Value;
     }
 }

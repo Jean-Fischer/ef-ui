@@ -72,7 +72,8 @@ public static class EfUiApplicationBuilderExtensions
             return Results.NotFound();
         }
 
-        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, ReadRows(dbContext, metadata.ClrType));
+        var rows = ReadRows(dbContext, metadata.ClrType);
+        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, CreateRenderedListRows(dbContext, metadata, rows));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -196,7 +197,8 @@ public static class EfUiApplicationBuilderExtensions
             return Results.BadRequest(result.Errors);
         }
 
-        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, ReadRows(dbContext, metadata.ClrType));
+        var rows = ReadRows(dbContext, metadata.ClrType);
+        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, CreateRenderedListRows(dbContext, metadata, rows));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -218,6 +220,65 @@ public static class EfUiApplicationBuilderExtensions
 
         var queryable = (System.Collections.IEnumerable)setMethod.MakeGenericMethod(entityClrType).Invoke(dbContext, null)!;
         return queryable.Cast<object>().ToList();
+    }
+
+    private static IReadOnlyList<RenderedListRow> CreateRenderedListRows(DbContext dbContext, EntityMetadata metadata, IReadOnlyList<object> rows)
+    {
+        var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata);
+
+        return rows.Select(row => new RenderedListRow(
+            FormatValue(row.GetType().GetProperty(metadata.PrimaryKeyProperty.Name)?.GetValue(row)),
+            metadata.AllProperties.ToDictionary(
+                property => property.Name,
+                property => GetRenderedListCellValue(row, property.Name, relatedValueLookups)))).ToList();
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> BuildRelatedValueLookups(DbContext dbContext, EntityMetadata metadata)
+    {
+        var entityType = dbContext.Model.FindEntityType(metadata.ClrType);
+        if (entityType is null)
+        {
+            return new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
+        }
+
+        var visiblePropertyNames = metadata.AllProperties
+            .Select(property => property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        var lookups = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
+
+        foreach (var foreignKey in entityType.GetForeignKeys().Where(foreignKey => foreignKey.Properties.Count == 1))
+        {
+            var foreignKeyProperty = foreignKey.Properties[0];
+            if (!visiblePropertyNames.Contains(foreignKeyProperty.Name))
+            {
+                continue;
+            }
+
+            var relatedPrimaryKey = foreignKey.PrincipalEntityType.FindPrimaryKey()?.Properties.SingleOrDefault();
+            if (relatedPrimaryKey is null)
+            {
+                continue;
+            }
+
+            lookups[foreignKeyProperty.Name] = ReadRows(dbContext, foreignKey.PrincipalEntityType.ClrType)
+                .ToDictionary(
+                    row => FormatValue(row.GetType().GetProperty(relatedPrimaryKey.Name)?.GetValue(row)),
+                    row => GetRelatedEntityLabel(row, relatedPrimaryKey.Name),
+                    StringComparer.Ordinal);
+        }
+
+        return lookups;
+    }
+
+    private static string GetRenderedListCellValue(object row, string propertyName, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
+    {
+        var rawValue = row.GetType().GetProperty(propertyName)?.GetValue(row);
+        var formattedValue = FormatValue(rawValue);
+
+        return relatedValueLookups.TryGetValue(propertyName, out var lookup)
+               && lookup.TryGetValue(formattedValue, out var label)
+            ? label
+            : formattedValue;
     }
 
     private static object? TryReadKey(DbContext dbContext, EntityMetadata metadata, string id)
@@ -293,7 +354,7 @@ public static class EfUiApplicationBuilderExtensions
 
         var keyValue = row.GetType().GetProperty(primaryKey.Name)?.GetValue(row);
         var value = FormatValue(keyValue);
-        var label = GetRelatedEntityLabel(row, primaryKey.Name, value);
+        var label = GetRelatedEntityLabel(row, primaryKey.Name);
         var selected = selectedValues.Contains(value);
 
         if (field.Kind == EditableFieldKind.Collection
@@ -308,7 +369,7 @@ public static class EfUiApplicationBuilderExtensions
                 var owner = dbContext.Find(metadata.ClrType, ownerValue);
                 var ownerLabel = owner is null
                     ? FormatValue(ownerValue)
-                    : GetRelatedEntityLabel(owner, metadata.PrimaryKeyProperty.Name, FormatValue(ownerValue));
+                    : GetRelatedEntityLabel(owner, metadata.PrimaryKeyProperty.Name);
 
                 return new RelatedEntityOption(value, label, selected, Disabled: true, Description: $"assigned to {ownerLabel}");
             }
@@ -317,20 +378,8 @@ public static class EfUiApplicationBuilderExtensions
         return new RelatedEntityOption(value, label, selected);
     }
 
-    private static string GetRelatedEntityLabel(object row, string primaryKeyPropertyName, string primaryKeyValue)
-    {
-        foreach (var preferredName in new[] { "Name", "Title", "Email" })
-        {
-            var property = row.GetType().GetProperty(preferredName);
-            var value = property?.GetValue(row);
-            if (value is not null && !string.IsNullOrWhiteSpace(value.ToString()))
-            {
-                return value.ToString()!;
-            }
-        }
-
-        return primaryKeyValue;
-    }
+    private static string GetRelatedEntityLabel(object row, string primaryKeyPropertyName)
+        => EntityDisplayLabelResolver.Resolve(row, primaryKeyPropertyName);
 
     private static HashSet<string> GetSelectedValues(DbContext dbContext, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string[]>? submittedValues)
     {

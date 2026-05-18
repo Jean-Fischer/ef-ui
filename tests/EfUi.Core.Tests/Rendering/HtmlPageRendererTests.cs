@@ -24,6 +24,113 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
+    public void RenderIndex_includes_theme_stylesheet_and_semantic_shell()
+    {
+        var sut = new HtmlPageRenderer();
+        var entities = new[]
+        {
+            new EntityMetadata("User", "users", typeof(object), PrimaryKey("Id", typeof(int)), Array.Empty<EntityPropertyMetadata>(), Array.Empty<EntityPropertyMetadata>())
+        };
+
+        var html = sut.RenderIndex("/efui", entities);
+
+        html.Should().Contain("href=\"/efui/assets/efui.css\"");
+        html.Should().Contain("class=\"efui-body\"");
+        html.Should().Contain("<main class=\"efui-page\">");
+        html.Should().Contain("<section class=\"efui-surface\">");
+        html.Should().Contain("<ul class=\"efui-index-list efui-link-grid\">");
+    }
+
+    [Fact]
+    public void RenderList_includes_theme_stylesheet_and_semantic_table_classes()
+    {
+        var sut = new HtmlPageRenderer();
+        var metadata = new EntityMetadata(
+            "User",
+            "users",
+            typeof(UserRow),
+            PrimaryKey("Id", typeof(int)),
+            new[]
+            {
+                PrimaryKey("Id", typeof(int)),
+                Editable("Name", typeof(string))
+            },
+            new[]
+            {
+                Editable("Name", typeof(string))
+            });
+
+        var html = sut.RenderList("/efui", metadata, new[]
+        {
+            new RenderedListRow("7", new Dictionary<string, string>
+            {
+                ["Id"] = "7",
+                ["Name"] = "Ada"
+            })
+        });
+
+        html.Should().Contain("href=\"/efui/assets/efui.css\"");
+        html.Should().Contain("class=\"efui-body\"");
+        html.Should().Contain("<main class=\"efui-page\">");
+        html.Should().Contain("<section class=\"efui-surface\">");
+        html.Should().Contain("<div class=\"efui-page-actions\">");
+        html.Should().Contain("<a class=\"efui-primary-link\" href=\"/efui/users/new\">Create New</a>");
+        html.Should().Contain("<div class=\"efui-table-wrapper\">");
+        html.Should().Contain("<table class=\"efui-table\">");
+        html.Should().Contain("<td class=\"efui-row-actions\">");
+        html.Should().Contain("<a class=\"efui-row-action-link\" href=\"/efui/users/7/edit\">Edit</a>");
+        html.Should().Contain("<button class=\"efui-row-action-button\" type=\"submit\">Delete</button>");
+    }
+
+    [Fact]
+    public void RenderList_renders_prepared_display_values()
+    {
+        var sut = new HtmlPageRenderer();
+        var metadata = new EntityMetadata(
+            "Album",
+            "albums",
+            typeof(object),
+            PrimaryKey("Id", typeof(int)),
+            new[]
+            {
+                PrimaryKey("Id", typeof(int)),
+                Editable("ArtistId", typeof(int)),
+                Editable("Title", typeof(string))
+            },
+            new[]
+            {
+                Editable("ArtistId", typeof(int)),
+                Editable("Title", typeof(string))
+            });
+
+        var html = sut.RenderList("/efui", metadata, new[]
+        {
+            new RenderedListRow("1", new Dictionary<string, string>
+            {
+                ["Id"] = "1",
+                ["ArtistId"] = "AC/DC",
+                ["Title"] = "For Those About To Rock"
+            })
+        });
+
+        html.Should().Contain(">AC/DC<");
+        html.Should().Contain(">For Those About To Rock<");
+        html.Should().NotContain(">17<");
+    }
+
+    [Fact]
+    public void HtmlPageRenderer_exposes_only_rendered_list_row_RenderList_overload()
+    {
+        var overloads = typeof(HtmlPageRenderer)
+            .GetMethods()
+            .Where(method => method.Name == nameof(HtmlPageRenderer.RenderList))
+            .ToArray();
+
+        overloads.Should().ContainSingle();
+        overloads[0].GetParameters()[2].ParameterType.Should().Be(typeof(IReadOnlyList<RenderedListRow>));
+    }
+
+    [Fact]
     public void RenderForm_omits_store_generated_primary_key_fields_on_create()
     {
         var sut = new HtmlPageRenderer();
@@ -424,9 +531,14 @@ public class HtmlPageRendererTests
                 Editable("Name", typeof(string))
             });
 
-        var html = sut.RenderList("/efui", metadata, new object[]
+        var html = sut.RenderList("/efui", metadata, new[]
         {
-            new TenantRow { TenantKey = "tenant / north?1", GroupId = 7, Name = "North" }
+            new RenderedListRow("tenant / north?1", new Dictionary<string, string>
+            {
+                ["TenantKey"] = "tenant / north?1",
+                ["GroupId"] = "Guests",
+                ["Name"] = "North"
+            })
         });
 
         html.Should().Contain("/efui/tenants/tenant%20%2F%20north%3F1/edit");
