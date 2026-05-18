@@ -23,12 +23,12 @@ public class EntityDisplayLabelResolverTests
     }
 
     [Fact]
-    public void Resolve_falls_back_to_title()
+    public void Resolve_uses_title_when_name_is_whitespace()
     {
         var row = new RowWithDisplayProperties
         {
             Id = 7,
-            Name = null,
+            Name = "   ",
             Title = "Countess",
             Email = "ada@example.com"
         };
@@ -39,13 +39,13 @@ public class EntityDisplayLabelResolverTests
     }
 
     [Fact]
-    public void Resolve_falls_back_to_email()
+    public void Resolve_uses_email_when_it_is_the_only_populated_preferred_property()
     {
         var row = new RowWithDisplayProperties
         {
             Id = 7,
             Name = null,
-            Title = string.Empty,
+            Title = null,
             Email = "ada@example.com"
         };
 

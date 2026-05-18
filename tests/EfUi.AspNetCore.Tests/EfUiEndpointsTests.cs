@@ -1,17 +1,22 @@
 using System.Net;
 using System.Text.RegularExpressions;
+using EfUi.SampleHost.Data;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace EfUi.AspNetCore.Tests;
 
 public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
 {
+    private readonly EfUiApplicationFactory _factory;
     private readonly HttpClient _client;
 
     public EfUiEndpointsTests(EfUiApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false
@@ -84,6 +89,36 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         adminsRow.Should().NotContain($"<td>{adminsEmail}</td><td>1</td><td>True</td><td>Related Label Admin</td>");
         guestsRow.Should().Contain($"<td>{guestsEmail}</td><td>Guests</td><td>True</td><td>Related Label Guest</td>");
         guestsRow.Should().NotContain($"<td>{guestsEmail}</td><td>2</td><td>True</td><td>Related Label Guest</td>");
+    }
+
+    [Fact]
+    public async Task Get_entity_page_shows_raw_foreign_key_value_when_related_row_is_missing()
+    {
+        var email = $"missing-related-{Guid.NewGuid():N}@example.com";
+        var id = await CreateUserAndGetIdAsync("Missing Related Label User", email, group: "1");
+
+        await SetUserGroupIdWithoutRelatedRowAsync(id, 999999);
+
+        var html = await _client.GetStringAsync("/simple/users");
+        var row = GetTableRowContainingValue(html, email);
+
+        row.Should().Contain($"<td>{email}</td><td>999999</td><td>True</td><td>Missing Related Label User</td>");
+        row.Should().NotContain("<td>Admins</td>");
+        row.Should().NotContain("<td>Guests</td>");
+    }
+
+    [Fact]
+    public async Task Get_entity_page_renders_null_foreign_key_as_empty()
+    {
+        var email = $"null-related-{Guid.NewGuid():N}@example.com";
+        await CreateUserAndGetIdAsync("Null Group User", email, group: null);
+
+        var html = await _client.GetStringAsync("/simple/users");
+        var row = GetTableRowContainingValue(html, email);
+
+        row.Should().Contain($"<td>{email}</td><td></td><td>True</td><td>Null Group User</td>");
+        row.Should().NotContain("<td>Admins</td>");
+        row.Should().NotContain("<td>Guests</td>");
     }
 
     [Fact]
@@ -277,16 +312,22 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    private async Task<string> CreateUserAndGetIdAsync(string name, string email, string group = "1")
+    private async Task<string> CreateUserAndGetIdAsync(string name, string email, string? group = "1")
     {
-        var createResponse = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(new Dictionary<string, string>
+        var values = new Dictionary<string, string>
         {
             ["Name"] = name,
             ["Email"] = email,
             ["IsActive"] = "true",
-            ["CreatedAt"] = "2026-05-17T10:00:00",
-            ["Group"] = group
-        }));
+            ["CreatedAt"] = "2026-05-17T10:00:00"
+        };
+
+        if (group is not null)
+        {
+            values["Group"] = group;
+        }
+
+        var createResponse = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(values));
 
         createResponse.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
 
@@ -295,6 +336,25 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var match = Regex.Match(row, @"/simple/users/(?<id>\d+)/edit");
         match.Success.Should().BeTrue();
         return match.Groups["id"].Value;
+    }
+
+    private async Task SetUserGroupIdWithoutRelatedRowAsync(string userId, int missingGroupId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SampleDbContext>();
+        var parsedUserId = int.Parse(userId);
+
+        await db.Database.OpenConnectionAsync();
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = OFF;");
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE Users SET GroupId = {missingGroupId} WHERE Id = {parsedUserId};");
+            await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON;");
+        }
+        finally
+        {
+            await db.Database.CloseConnectionAsync();
+        }
     }
 
     private static string GetTableRowContainingValue(string html, string value)
