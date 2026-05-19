@@ -63,7 +63,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
-    public async Task Get_entity_page_renders_themed_table_with_related_labels()
+    public async Task Get_entity_page_renders_themed_table_with_related_labels_and_fk_links()
     {
         var adminsEmail = $"related-label-admins-{Guid.NewGuid():N}@example.com";
         var guestsEmail = $"related-label-guests-{Guid.NewGuid():N}@example.com";
@@ -86,9 +86,9 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("class=\"efui-row-actions\"");
         html.Should().Contain("class=\"efui-row-action-link\"");
         html.Should().Contain("class=\"efui-row-action-button\"");
-        adminsRow.Should().Contain($"<td>{adminsEmail}</td><td>Admins</td><td>True</td><td>Related Label Admin</td>");
+        adminsRow.Should().Contain($"<td>{adminsEmail}</td><td><a class=\"efui-cell-link\" href=\"/simple/groups/1/edit\">Admins</a></td><td>True</td><td>Related Label Admin</td>");
         adminsRow.Should().NotContain($"<td>{adminsEmail}</td><td>1</td><td>True</td><td>Related Label Admin</td>");
-        guestsRow.Should().Contain($"<td>{guestsEmail}</td><td>Guests</td><td>True</td><td>Related Label Guest</td>");
+        guestsRow.Should().Contain($"<td>{guestsEmail}</td><td><a class=\"efui-cell-link\" href=\"/simple/groups/2/edit\">Guests</a></td><td>True</td><td>Related Label Guest</td>");
         guestsRow.Should().NotContain($"<td>{guestsEmail}</td><td>2</td><td>True</td><td>Related Label Guest</td>");
     }
 
@@ -104,6 +104,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var row = GetTableRowContainingValue(html, email);
 
         row.Should().Contain($"<td>{email}</td><td>999999</td><td>True</td><td>Missing Related Label User</td>");
+        row.Should().NotContain("/simple/groups/999999/edit");
         row.Should().NotContain("<td>Admins</td>");
         row.Should().NotContain("<td>Guests</td>");
     }

@@ -465,7 +465,7 @@ public class HtmlPageRendererTests
             },
             relatedManagementLinks:
             [
-                new RelatedEntityManagementLink("InvoiceItems", "invoice_items", typeof(TenantRow))
+                new RelatedEntityManagementLink("InvoiceItems", "invoice_items", typeof(TenantRow), "InvoiceId")
             ]);
 
         var html = sut.RenderEditForm(
@@ -477,7 +477,7 @@ public class HtmlPageRendererTests
             key: 1);
 
         html.Should().Contain("Manage related rows");
-        html.Should().Contain("/efui/invoice_items");
+        html.Should().Contain("/efui/invoice_items?filter.0.field=InvoiceId&filter.0.op=eq&filter.0.value=1");
         html.Should().NotContain("name=\"InvoiceItems\" type=\"checkbox\"");
     }
 

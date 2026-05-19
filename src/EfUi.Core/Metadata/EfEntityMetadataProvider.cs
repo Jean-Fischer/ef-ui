@@ -99,7 +99,8 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 relatedManagementLinks.Add(new RelatedEntityManagementLink(
                     navigation.Name,
                     GetRouteName(navigation.TargetEntityType),
-                    navigation.TargetEntityType.ClrType));
+                    navigation.TargetEntityType.ClrType,
+                    classification.ForeignKey!.Properties[0].Name));
                 continue;
             }
 

@@ -79,7 +79,7 @@ public static class EfUiApplicationBuilderExtensions
             options.RoutePrefix,
             metadata,
             new RenderedListView(
-                CreateRenderedListRows(metadata, rows, relatedValueLookups),
+                CreateRenderedListRows(options.RoutePrefix, metadata, rows, relatedValueLookups),
                 queryResult.Query.Filters.Select(filter => new RenderedListFilter(filter.Field, filter.Operator, filter.Value)).ToList(),
                 queryResult.Query.Sorts.Select(sort => new RenderedListSort(sort.Field, sort.Direction)).ToList(),
                 queryResult.Errors,
@@ -213,7 +213,7 @@ public static class EfUiApplicationBuilderExtensions
         var html = new HtmlPageRenderer().RenderList(
             options.RoutePrefix,
             metadata,
-            new RenderedListView(CreateRenderedListRows(metadata, rows, relatedValueLookups)));
+            new RenderedListView(CreateRenderedListRows(options.RoutePrefix, metadata, rows, relatedValueLookups)));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -350,13 +350,13 @@ public static class EfUiApplicationBuilderExtensions
         return queryable.Cast<object>().ToList();
     }
 
-    private static IReadOnlyList<RenderedListRow> CreateRenderedListRows(EntityMetadata metadata, IReadOnlyList<object> rows, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
+    private static IReadOnlyList<RenderedListRow> CreateRenderedListRows(string routePrefix, EntityMetadata metadata, IReadOnlyList<object> rows, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
     {
         return rows.Select(row => new RenderedListRow(
             FormatValue(row.GetType().GetProperty(metadata.PrimaryKeyProperty.Name)?.GetValue(row)),
             metadata.AllProperties.ToDictionary(
                 property => property.Name,
-                property => new RenderedListCell(GetRenderedListCellValue(row, property.Name, relatedValueLookups))))).ToList();
+                property => CreateRenderedListCell(routePrefix, row, property, relatedValueLookups)))).ToList();
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> BuildRelatedValueLookups(DbContext dbContext, EntityMetadata metadata)
@@ -438,6 +438,21 @@ public static class EfUiApplicationBuilderExtensions
 
     private static string GetQueryDisplayValue(object row, EntityPropertyMetadata property, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
         => GetRenderedListCellValue(row, property.Name, relatedValueLookups);
+
+    private static RenderedListCell CreateRenderedListCell(string routePrefix, object row, EntityPropertyMetadata property, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
+    {
+        var rawValue = row.GetType().GetProperty(property.Name)?.GetValue(row);
+        var formattedRawValue = FormatValue(rawValue);
+        var text = GetRenderedListCellValue(row, property.Name, relatedValueLookups);
+        var href = property.RelatedRouteName is not null
+                   && !string.IsNullOrWhiteSpace(formattedRawValue)
+                   && relatedValueLookups.TryGetValue(property.Name, out var lookup)
+                   && lookup.ContainsKey(formattedRawValue)
+            ? $"{routePrefix}/{property.RelatedRouteName}/{Uri.EscapeDataString(formattedRawValue)}/edit"
+            : null;
+
+        return new RenderedListCell(text, href);
+    }
 
     private static string GetRenderedListCellValue(object row, string propertyName, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
     {

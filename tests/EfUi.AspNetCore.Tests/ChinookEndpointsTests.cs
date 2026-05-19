@@ -40,7 +40,7 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     }
 
     [Fact]
-    public async Task Get_albums_list_uses_related_artist_labels_with_themed_table_markup()
+    public async Task Get_albums_list_uses_related_artist_labels_with_themed_table_markup_and_fk_links()
     {
         var html = await _client.GetStringAsync("/chinook/albums");
 
@@ -51,7 +51,7 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         html.Should().Contain("class=\"efui-row-actions\"");
         html.Should().Contain("class=\"efui-row-action-link\"");
         html.Should().Contain("class=\"efui-row-action-button\"");
-        Regex.IsMatch(html, @"<tr><td>1</td><td>AC/DC</td><td>For Those About To Rock We Salute You</td>", RegexOptions.Singleline).Should().BeTrue();
+        Regex.IsMatch(html, @"<tr><td>1</td><td><a class=\""efui-cell-link\"" href=\""/chinook/artists/1/edit\"">AC/DC</a></td><td>For Those About To Rock We Salute You</td>", RegexOptions.Singleline).Should().BeTrue();
         Regex.IsMatch(html, @"<tr><td>1</td><td>1</td><td>For Those About To Rock We Salute You</td>", RegexOptions.Singleline).Should().BeFalse();
     }
 
@@ -133,13 +133,22 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     }
 
     [Fact]
-    public async Task Get_invoice_edit_form_shows_manage_link_for_payload_join_rows()
+    public async Task Get_invoice_edit_form_shows_manage_link_with_prefilter_for_payload_join_rows()
     {
         var html = await _client.GetStringAsync("/chinook/invoices/1/edit");
 
         html.Should().Contain("Manage related rows");
-        html.Should().Contain("/chinook/invoice_items");
+        html.Should().Contain("/chinook/invoice_items?filter.0.field=InvoiceId&filter.0.op=eq&filter.0.value=1");
         html.Should().NotContain("name=\"InvoiceItems\" type=\"checkbox\"");
+    }
+
+    [Fact]
+    public async Task Get_invoice_items_list_shows_prefilter_from_related_rows_link_as_visible_query_state()
+    {
+        var html = await _client.GetStringAsync("/chinook/invoice_items?filter.0.field=InvoiceId&filter.0.op=eq&filter.0.value=1");
+
+        html.Should().Contain("InvoiceId eq 1");
+        html.Should().Contain("class=\"efui-query-builder\"");
     }
 
     [Fact]

@@ -194,7 +194,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
         if (!isCreate && entity.RelatedManagementLinks.Any())
         {
-            RenderRelatedManagementLinks(html, routePrefix, entity);
+            RenderRelatedManagementLinks(html, routePrefix, entity, key);
         }
 
         html.Append("<button class=\"efui-button\" type=\"submit\">Save</button></form>");
@@ -277,12 +277,13 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append("</div></div>");
     }
 
-    private static void RenderRelatedManagementLinks(StringBuilder html, string routePrefix, EntityMetadata entity)
+    private static void RenderRelatedManagementLinks(StringBuilder html, string routePrefix, EntityMetadata entity, object? key)
     {
         html.Append("<section class=\"efui-related-links\"><h2 class=\"efui-related-links-title\">Related rows</h2>");
         foreach (var link in entity.RelatedManagementLinks)
         {
-            html.Append($"<div class=\"efui-related-link\"><label class=\"efui-label\">{WebUtility.HtmlEncode(link.Name)}</label> <a class=\"efui-related-link-action\" href=\"{routePrefix}/{link.RouteName}\">Manage related rows</a></div>");
+            var href = $"{routePrefix}/{link.RouteName}?filter.0.field={Uri.EscapeDataString(link.FilterFieldName)}&filter.0.op=eq&filter.0.value={Uri.EscapeDataString(FormatValue(key))}";
+            html.Append($"<div class=\"efui-related-link\"><label class=\"efui-label\">{WebUtility.HtmlEncode(link.Name)}</label> <a class=\"efui-related-link-action\" href=\"{href}\">Manage related rows</a></div>");
         }
 
         html.Append("</section>");
