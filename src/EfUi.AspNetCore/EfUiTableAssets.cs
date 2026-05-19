@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function setLoading(isLoading, message) {
+      host.classList.toggle('efui-table-host-loading', isLoading);
       if (!(loading instanceof HTMLElement)) {
         return;
       }
@@ -29,13 +30,28 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
 
-    function navigate(mutator) {
+    function clearFilterQuery(params) {
+      params.delete('filter.0.field');
+      params.delete('filter.0.op');
+      params.delete('filter.0.value');
+    }
+
+    function clearSortQuery(params) {
+      params.delete('sort.0.field');
+      params.delete('sort.0.dir');
+    }
+
+    function isBlankFilterValue(value) {
+      return value === null || value === undefined || String(value).trim() === '';
+    }
+
+    function navigate(listUrl, mutator) {
       var params = new URLSearchParams(window.location.search);
       mutator(params);
       params.set('offset', '0');
       setLoading(true, 'Loading table…');
       var query = params.toString();
-      window.location.assign(window.location.pathname + (query ? '?' + query : ''));
+      window.location.assign(listUrl + (query ? '?' + query : ''));
     }
 
     var config;
@@ -49,34 +65,104 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
-    function readSort(sort) {
-      if (!sort || typeof sort !== 'object') {
-        return { field: '', direction: '' };
+    var listUrl = config.listUrl || window.location.pathname;
+    var columnMap = {};
+    (config.columns || []).forEach(function (column) {
+      if (column && column.field) {
+        columnMap[column.field] = column;
       }
+    });
 
-      return {
-        field: sort.field || sort.Field || '',
-        direction: (sort.direction || sort.Direction || '').toLowerCase()
-      };
+    function readInitialSort(sorts) {
+      return (sorts || [])
+        .map(function (sort) {
+          var field = sort.field || sort.Field || '';
+          var direction = (sort.direction || sort.Direction || '').toLowerCase();
+          if (!field || !direction) {
+            return null;
+          }
+
+          return { column: field, dir: direction };
+        })
+        .filter(function (sort) { return sort !== null; });
     }
 
-    var activeSort = readSort((config.query && config.query.sorts && config.query.sorts[0]) || null);
+    function readInitialHeaderFilter(columns) {
+      return (columns || [])
+        .filter(function (column) {
+          return !!column
+            && column.field !== '__actions'
+            && column.headerFilter
+            && !isBlankFilterValue(column.headerFilterValue);
+        })
+        .map(function (column) {
+          return {
+            field: column.field,
+            value: String(column.headerFilterValue)
+          };
+        });
+    }
+
+    function getFilterOperator(field) {
+      var column = columnMap[field] || {};
+      return column.activeFilterOperator || column.filterOperator || 'contains';
+    }
+
+    function applyFilterQuery(params, filters) {
+      clearFilterQuery(params);
+      var firstFilter = (filters || []).find(function (filter) {
+        return !!filter && !!filter.field && !isBlankFilterValue(filter.value);
+      });
+
+      if (!firstFilter) {
+        return;
+      }
+
+      params.set('filter.0.field', firstFilter.field);
+      params.set('filter.0.op', getFilterOperator(firstFilter.field));
+      params.set('filter.0.value', String(firstFilter.value));
+    }
+
+    function applySortQuery(params, sorters) {
+      clearSortQuery(params);
+      var firstSorter = (sorters || []).find(function (sorter) {
+        var field = sorter && (sorter.field || (sorter.column && typeof sorter.column.getField === 'function' ? sorter.column.getField() : ''));
+        return !!field && !!sorter.dir;
+      });
+
+      if (!firstSorter) {
+        return;
+      }
+
+      var field = firstSorter.field || (firstSorter.column && typeof firstSorter.column.getField === 'function' ? firstSorter.column.getField() : '');
+      if (!field) {
+        return;
+      }
+
+      params.set('sort.0.field', field);
+      params.set('sort.0.dir', firstSorter.dir);
+    }
 
     var columns = (config.columns || []).map(function (column) {
       var isActionsColumn = column.field === '__actions';
-      var direction = activeSort.field === column.field ? activeSort.direction : '';
-      var title = column.title || column.field || '';
-      if (direction === 'asc') {
-        title += ' ↑';
-      } else if (direction === 'desc') {
-        title += ' ↓';
-      }
 
       return {
-        title: title,
+        title: column.title || column.field || '',
         field: column.field,
-        headerSort: false,
-        cssClass: isActionsColumn ? 'efui-tabulator-actions-column' : (column.headerSort === false ? '' : 'efui-tabulator-sortable'),
+        headerSort: column.headerSort !== false,
+        headerSortTristate: column.headerSort !== false,
+        headerFilter: column.headerFilter === false ? false : column.headerFilter,
+        headerFilterFunc: isActionsColumn || column.headerFilter === false
+          ? undefined
+          : function () {
+              return true;
+            },
+        sorter: isActionsColumn || column.headerSort === false
+          ? undefined
+          : function () {
+              return 0;
+            },
+        cssClass: isActionsColumn ? 'efui-tabulator-actions-column' : 'efui-tabulator-data-column',
         formatter: function (cell) {
           var value = cell.getValue();
           if (isActionsColumn) {
@@ -97,47 +183,59 @@ document.addEventListener('DOMContentLoaded', function () {
           }
 
           return value && value.text ? value.text : '';
-        },
-        headerClick: isActionsColumn || column.headerSort === false
-          ? undefined
-          : function () {
-              navigate(function (params) {
-                var currentField = params.get('sort.0.field') || activeSort.field;
-                var currentDir = (params.get('sort.0.dir') || activeSort.direction || '').toLowerCase();
-
-                if (currentField === column.field && currentDir === 'asc') {
-                  params.set('sort.0.field', column.field);
-                  params.set('sort.0.dir', 'desc');
-                  return;
-                }
-
-                if (currentField === column.field && currentDir === 'desc') {
-                  params.delete('sort.0.field');
-                  params.delete('sort.0.dir');
-                  return;
-                }
-
-                params.set('sort.0.field', column.field);
-                params.set('sort.0.dir', 'asc');
-              });
-            }
+        }
       };
     });
 
+    var filterNavigationHandle = 0;
+    var readyForNavigation = false;
+
     setLoading(true, 'Loading table…');
 
-    new window.Tabulator(host, {
+    var table = new window.Tabulator(host, {
       data: config.rows || [],
       columns: columns,
       layout: 'fitColumns',
-      reactiveData: false
+      reactiveData: false,
+      initialSort: readInitialSort(config.query && config.query.sorts),
+      initialHeaderFilter: readInitialHeaderFilter(config.columns),
+      headerFilterLiveFilterDelay: 400,
+      dataLoader: true,
+      dataLoaderLoading: '<div class="efui-tabulator-loader">Loading table…</div>',
+      dataLoaderError: '<div class="efui-tabulator-loader efui-tabulator-loader-error">Unable to load table.</div>'
     });
 
-    setLoading(false, '');
-    container.classList.add('efui-table-enhancement-ready');
-    if (fallback instanceof HTMLElement) {
-      fallback.classList.add('efui-table-fallback-hidden');
-    }
+    table.on('dataSorting', function (sorters) {
+      if (!readyForNavigation) {
+        return;
+      }
+
+      navigate(listUrl, function (params) {
+        applySortQuery(params, sorters);
+      });
+    });
+
+    table.on('dataFiltering', function (filters) {
+      if (!readyForNavigation) {
+        return;
+      }
+
+      clearTimeout(filterNavigationHandle);
+      filterNavigationHandle = setTimeout(function () {
+        navigate(listUrl, function (params) {
+          applyFilterQuery(params, filters);
+        });
+      }, 400);
+    });
+
+    window.setTimeout(function () {
+      readyForNavigation = true;
+      setLoading(false, '');
+      container.classList.add('efui-table-enhancement-ready');
+      if (fallback instanceof HTMLElement) {
+        fallback.classList.add('efui-table-fallback-hidden');
+      }
+    }, 0);
   });
 });
 """;
@@ -162,13 +260,25 @@ document.addEventListener('DOMContentLoaded', function () {
   font-weight: 600;
 }
 
-.efui-table-fallback-hidden {
-  display: none;
+.efui-tabulator-loader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 12rem;
+  padding: 0.875rem 1rem;
+  border-radius: 0.75rem;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
 }
 
-.efui-tabulator-sortable .tabulator-col-title {
-  color: #2563eb;
-  cursor: pointer;
+.efui-tabulator-loader-error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.efui-table-fallback-hidden {
+  display: none;
 }
 
 .efui-tabulator-actions-column {

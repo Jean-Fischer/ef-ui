@@ -66,6 +66,10 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         css.Should().Contain(".efui-table-wrapper");
         css.Should().Contain(".efui-row-actions");
         css.Should().Contain(".efui-row-action-button");
+        css.Should().Contain(".tabulator .tabulator-header");
+        css.Should().Contain(".tabulator .tabulator-header .tabulator-col.tabulator-sortable");
+        css.Should().Contain(".tabulator .tabulator-header .tabulator-header-filter input");
+        css.Should().Contain(".efui-table-loading");
     }
 
     [Fact]
@@ -78,10 +82,22 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().Contain("efui-table-config");
         script.Should().Contain("URLSearchParams");
         script.Should().Contain("window.location");
-        script.Should().Contain("efui-table-loading");
+        script.Should().Contain("initialSort");
+        script.Should().Contain("initialHeaderFilter");
+        script.Should().Contain("headerFilterLiveFilterDelay");
+        script.Should().Contain("dataSorting");
+        script.Should().Contain("dataFiltering");
+        script.Should().Contain("clearTimeout");
+        script.Should().Contain("setTimeout");
+        script.Should().Contain("dataLoaderLoading");
+        script.Should().Contain("headerSort: column.headerSort !== false");
+        script.Should().Contain("headerFilter: column.headerFilter");
+        script.Should().NotContain("headerClick:");
+        script.Should().NotContain("title += ' ↑'");
         script.Should().NotContain("efui-query-form");
         css.Should().Contain(".efui-table-enhancement");
         css.Should().Contain(".efui-table-loading");
+        css.Should().Contain(".efui-tabulator-loader");
     }
 
     [Fact]

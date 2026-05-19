@@ -163,7 +163,75 @@ internal static class EfUiFormCss
 }
 
 .efui-table-host {
-  min-height: 2rem;
+  min-height: 12rem;
+}
+
+.efui-table-host-loading {
+  opacity: 0.88;
+}
+
+.efui-table-loading {
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.625rem;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.tabulator {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: #ffffff;
+  font: inherit;
+}
+
+.tabulator .tabulator-header {
+  border-bottom: 1px solid #e5e7eb;
+  background: #f8fafc;
+}
+
+.tabulator .tabulator-header .tabulator-col {
+  background: #f8fafc;
+  border-right-color: #e5e7eb;
+}
+
+.tabulator .tabulator-header .tabulator-col.tabulator-sortable {
+  color: #2563eb;
+}
+
+.tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.tabulator .tabulator-header .tabulator-header-filter {
+  margin-top: 0.5rem;
+}
+
+.tabulator .tabulator-header .tabulator-header-filter input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  color: #111827;
+  font: inherit;
+}
+
+.tabulator .tabulator-tableholder .tabulator-row {
+  background: #ffffff;
+}
+
+.tabulator .tabulator-tableholder .tabulator-row:nth-child(even) {
+  background: #f9fafb;
+}
+
+.tabulator .tabulator-tableholder .tabulator-row:hover {
+  background: #eff6ff;
 }
 
 .efui-cell-link {
