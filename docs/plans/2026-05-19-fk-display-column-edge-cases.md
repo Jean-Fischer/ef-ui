@@ -38,7 +38,7 @@ For each edge case, I suggest we judge it by four questions:
 
 | Edge case | Why it matters | Current behavior | Likely complexity | Suggested stance |
 |---|---|---:|---:|---|
-| Entity has no primary key | EF Core supports keyless types, and users may expect them to appear somewhere | Currently not supported by list metadata; single-PK is required | Medium/High | Probably **not now** unless we decide keyless read-only views are valuable |
+| Entity has no primary key | EF Core supports keyless types, and users may expect them to appear somewhere | Currently not supported by list metadata; single-PK is required | Medium/High | **Maybe later**; if we support it, keep it read-only unless we can derive a truly stable synthetic identity |
 | Entity has a composite primary key | Some domains use natural composite keys | Current metadata discovery throws | Medium | Probably **not now**; list URLs and edit routes get awkward |
 | FK is composite | Some relationships use multiple columns | Current FK display logic assumes single-column FK | High | Probably **not now** |
 | Principal entity has multiple FKs from different dependents | Same entity shown in different contexts may need different labels | Already supported by navigation-property override design | Low | **Yes** |
@@ -85,6 +85,7 @@ If we want to keep the feature small, I think the worthwhile shortlist is:
 
 ### Worth considering, but maybe later
 
+- keyless entities, only as read-only views with a stable synthetic identity if we can derive one safely
 - self-referencing relationships
 - many-to-many label reuse audits
 - inheritance hierarchies
@@ -93,7 +94,6 @@ If we want to keep the feature small, I think the worthwhile shortlist is:
 
 ### Probably not worth supporting now
 
-- entities without primary keys
 - composite primary keys
 - composite foreign keys
 - shadow FK only relationships with no navigation property
@@ -111,18 +111,19 @@ Right now EF UI already assumes the entity has a single primary key. That assump
 - row identity in rendered tables
 - lookup and link generation for related rows
 
-So for a keyless entity, we would need to decide whether it is:
+For a keyless entity, we should decide whether it is:
 
 1. **excluded entirely** from EF UI,
-2. **shown read-only only**, or
-3. **supported with a synthetic identity**.
+2. **shown read-only only** with a synthetic identity, or
+3. **supported like a normal entity**.
 
-Option 3 is the complicated one. It would require a separate identity model and probably a different rendering contract.
+My current bias is:
 
-My current bias:
+- prefer **read-only only** if we can derive a stable synthetic identity from row values or other deterministic technical data
+- if we ever allow editing, regenerate that synthetic identity after the edit so the UI stays internally consistent
+- if we cannot derive a stable identity safely, show a clear omission/error report instead of pretending the entity is supported
 
-- **skip keyless entities for now**
-- if we ever need them, treat them as a separate read-only feature rather than part of FK display customization
+So: keyless entities may be possible later, but only as a separate read-only path unless we discover a safe, stable identity strategy.
 
 ## Graceful error reporting
 
@@ -170,7 +171,7 @@ That gives us a middle ground between two bad extremes:
 
 You already answered the open questions in a useful way, so I am recording the current direction here:
 
-1. **Keyless entities:** prefer graceful support if we can derive a stable technical identity; otherwise show a clear error/omission report rather than pretending they do not exist.
+1. **Keyless entities:** if we can derive a stable synthetic identity, support them as read-only first; if not, show a clear error/omission report rather than pretending they do not exist.
 2. **Composite keys:** keep as a hard reject for now.
 3. **Shadow FKs:** likely frequent enough that we should consider a graceful fallback path or a second configuration path later; the current navigation-property attribute model may not be enough.
 4. **Duplicate labels:** acceptable when cosmetic.
