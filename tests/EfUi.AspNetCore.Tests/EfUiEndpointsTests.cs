@@ -93,6 +93,12 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().Contain("headerSort: column.headerSort !== false");
         script.Should().Contain("headerFilter: column.headerFilter");
         script.Should().Contain("clearIndexedQuery");
+        script.Should().Contain("params.set('offset', '0')");
+        script.Should().Contain("params.set('filter.' + filterIndex + '.field'");
+        script.Should().Contain("params.set('filter.' + filterIndex + '.op'");
+        script.Should().Contain("params.set('filter.' + filterIndex + '.value'");
+        script.Should().Contain("params.set('sort.' + sortIndex + '.field'");
+        script.Should().Contain("params.set('sort.' + sortIndex + '.dir'");
         script.Should().Contain("filterIndex");
         script.Should().Contain("sortIndex");
         script.Should().NotContain("firstFilter");
