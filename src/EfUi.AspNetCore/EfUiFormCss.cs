@@ -94,6 +94,42 @@ internal static class EfUiFormCss
   background: #f8fafc;
 }
 
+.efui-query-builder-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.efui-query-builder-controls {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+
+.efui-query-builder-field {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.efui-query-builder-value {
+  grid-column: span 2;
+}
+
+.efui-query-builder-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.efui-query-builder-clear {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.efui-query-builder-clear:hover {
+  text-decoration: underline;
+}
+
 .efui-query-builder-group {
   display: grid;
   gap: 0.5rem;

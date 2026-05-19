@@ -70,7 +70,11 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
 
         script.Should().Contain("Tabulator");
         script.Should().Contain("efui-table-config");
+        script.Should().Contain("URLSearchParams");
+        script.Should().Contain("window.location");
+        script.Should().Contain("efui-table-loading");
         css.Should().Contain(".efui-table-enhancement");
+        css.Should().Contain(".efui-table-loading");
     }
 
     [Fact]
@@ -140,6 +144,12 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var html = await _client.GetStringAsync("/simple/users?filter.0.field=Name&filter.0.op=contains&filter.0.value=Ada&sort.0.field=Email&sort.0.dir=desc&offset=0&limit=25");
 
         html.Should().Contain("class=\"efui-query-builder\"");
+        html.Should().Contain("<form class=\"efui-query-builder-form\" method=\"get\" action=\"/simple/users\"");
+        html.Should().Contain("name=\"filter.0.field\"");
+        html.Should().Contain("name=\"filter.0.op\"");
+        html.Should().Contain("name=\"filter.0.value\"");
+        html.Should().Contain("name=\"sort.0.field\"");
+        html.Should().Contain("name=\"sort.0.dir\"");
         html.Should().Contain("Name contains Ada");
         html.Should().Contain("Email desc");
         html.Should().Contain("data-offset=\"0\"");
@@ -148,8 +158,10 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("src=\"/simple/assets/efui-table.js\"");
         html.Should().Contain("data-role=\"efui-table-enhancement\"");
         html.Should().Contain("data-role=\"efui-table-config\"");
+        html.Should().Contain("data-role=\"efui-table-loading\"");
         html.Should().Contain("data-role=\"efui-table-fallback\"");
         html.Should().Contain("\"library\":\"tabulator\"");
+        html.Should().Contain("\"field\":\"__actions\"");
     }
 
     [Fact]

@@ -152,6 +152,16 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     }
 
     [Fact]
+    public async Task Get_tracks_list_filters_fk_rows_by_raw_key_when_eq_query_comes_from_url_contract()
+    {
+        var html = await _client.GetStringAsync("/chinook/tracks?filter.0.field=MediaTypeId&filter.0.op=eq&filter.0.value=1");
+
+        html.Should().Contain("MediaTypeId eq 1");
+        Regex.IsMatch(html, @"<tbody>\s*<tr>", RegexOptions.Singleline).Should().BeTrue();
+        html.Should().Contain("MPEG audio file");
+    }
+
+    [Fact]
     public async Task Post_update_genre_persists_changes()
     {
         var updatedName = $"Updated Genre {Guid.NewGuid():N}";

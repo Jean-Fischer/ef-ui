@@ -434,10 +434,14 @@ public static class EfUiApplicationBuilderExtensions
     private static bool MatchesFilter(object row, EntityPropertyMetadata property, TableFilterClause filter, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
     {
         var candidate = GetQueryDisplayValue(row, property, relatedValueLookups);
+        var rawValue = FormatValue(row.GetType().GetProperty(property.Name)?.GetValue(row));
+        var filterValue = filter.Value ?? string.Empty;
+
         return filter.Operator.ToLowerInvariant() switch
         {
-            "contains" => candidate.Contains(filter.Value ?? string.Empty, StringComparison.OrdinalIgnoreCase),
-            "eq" => string.Equals(candidate, filter.Value ?? string.Empty, StringComparison.OrdinalIgnoreCase),
+            "contains" => candidate.Contains(filterValue, StringComparison.OrdinalIgnoreCase),
+            "eq" => string.Equals(candidate, filterValue, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(rawValue, filterValue, StringComparison.OrdinalIgnoreCase),
             _ => false
         };
     }

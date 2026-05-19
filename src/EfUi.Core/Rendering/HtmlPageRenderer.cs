@@ -33,8 +33,8 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append("<div class=\"efui-page-actions\">");
         html.Append($"<a class=\"efui-primary-link\" href=\"{routePrefix}/{entity.RouteName}/new\">Create New</a>");
         html.Append("</div>");
-        RenderQueryBuilder(html, view);
-        RenderTableEnhancementShell(html, entity, view);
+        RenderQueryBuilder(html, routePrefix, entity, view);
+        RenderTableEnhancementShell(html, routePrefix, entity, view);
         html.Append("<div class=\"efui-table-wrapper\" data-role=\"efui-table-fallback\">");
         html.Append("<table class=\"efui-table\"><thead><tr>");
 
@@ -57,11 +57,8 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
                 html.Append("</td>");
             }
 
-            var escapedKey = EscapeRouteSegment(row.Key);
             html.Append("<td class=\"efui-row-actions\">");
-            html.Append($"<a class=\"efui-row-action-link\" href=\"{routePrefix}/{entity.RouteName}/{escapedKey}/edit\">Edit</a>");
-            html.Append($"<form class=\"efui-row-action-form\" method=\"post\" action=\"{routePrefix}/{entity.RouteName}/{escapedKey}/delete\">");
-            html.Append("<button class=\"efui-row-action-button\" type=\"submit\">Delete</button></form>");
+            html.Append(BuildRowActionsMarkup(routePrefix, entity, row.Key));
             html.Append("</td></tr>");
         }
 
@@ -72,8 +69,12 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     public string RenderForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
         => RenderEditForm(routePrefix, entity, model, isCreate, errors, null, submittedValues, fieldOptions);
 
-    private static void RenderQueryBuilder(StringBuilder html, RenderedListView view)
+    private static void RenderQueryBuilder(StringBuilder html, string routePrefix, EntityMetadata entity, RenderedListView view)
     {
+        var action = $"{routePrefix}/{entity.RouteName}";
+        var activeFilter = view.Filters.FirstOrDefault();
+        var activeSort = view.Sorts.FirstOrDefault();
+
         html.Append($"<section class=\"efui-query-builder\" data-offset=\"{view.Offset}\" data-limit=\"{view.Limit}\">");
 
         if (view.Errors.Count > 0)
@@ -86,6 +87,29 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
             html.Append("</div>");
         }
+
+        html.Append($"<form class=\"efui-query-builder-form\" method=\"get\" action=\"{action}\" data-role=\"efui-query-form\">");
+        html.Append("<div class=\"efui-query-builder-controls\">");
+        html.Append("<label class=\"efui-query-builder-field\"><span class=\"efui-label\">Filter field</span>");
+        RenderQueryFieldSelect(html, "filter.0.field", entity, activeFilter?.Field, includeEmptyOption: true);
+        html.Append("</label>");
+        html.Append("<label class=\"efui-query-builder-field\"><span class=\"efui-label\">Operator</span>");
+        RenderQueryOperatorSelect(html, activeFilter?.Operator);
+        html.Append("</label>");
+        html.Append($"<label class=\"efui-query-builder-field efui-query-builder-value\"><span class=\"efui-label\">Value</span><input class=\"efui-input\" name=\"filter.0.value\" value=\"{WebUtility.HtmlEncode(activeFilter?.Value ?? string.Empty)}\" /></label>");
+        html.Append("<label class=\"efui-query-builder-field\"><span class=\"efui-label\">Sort field</span>");
+        RenderQueryFieldSelect(html, "sort.0.field", entity, activeSort?.Field, includeEmptyOption: true);
+        html.Append("</label>");
+        html.Append("<label class=\"efui-query-builder-field\"><span class=\"efui-label\">Direction</span>");
+        RenderSortDirectionSelect(html, activeSort?.Direction);
+        html.Append("</label>");
+        html.Append($"<input type=\"hidden\" name=\"offset\" value=\"0\" />");
+        html.Append($"<input type=\"hidden\" name=\"limit\" value=\"{view.Limit}\" />");
+        html.Append("</div>");
+        html.Append("<div class=\"efui-query-builder-actions\">");
+        html.Append("<button class=\"efui-button\" type=\"submit\">Apply</button>");
+        html.Append($"<a class=\"efui-query-builder-clear\" href=\"{action}\">Clear</a>");
+        html.Append("</div></form>");
 
         html.Append("<div class=\"efui-query-builder-group\"><h2>Filters</h2>");
         if (view.Filters.Count == 0)
@@ -117,6 +141,49 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append("</div></section>");
     }
 
+    private static void RenderQueryFieldSelect(StringBuilder html, string name, EntityMetadata entity, string? selectedValue, bool includeEmptyOption)
+    {
+        html.Append($"<select class=\"efui-select\" name=\"{name}\">");
+        if (includeEmptyOption)
+        {
+            html.Append("<option value=\"\"></option>");
+        }
+
+        foreach (var property in entity.AllProperties)
+        {
+            var selected = string.Equals(property.Name, selectedValue, StringComparison.Ordinal) ? " selected" : string.Empty;
+            html.Append($"<option value=\"{WebUtility.HtmlEncode(property.Name)}\"{selected}>{WebUtility.HtmlEncode(property.Name)}</option>");
+        }
+
+        html.Append("</select>");
+    }
+
+    private static void RenderQueryOperatorSelect(StringBuilder html, string? selectedValue)
+    {
+        html.Append("<select class=\"efui-select\" name=\"filter.0.op\">");
+        html.Append("<option value=\"\"></option>");
+        foreach (var op in new[] { "contains", "eq" })
+        {
+            var selected = string.Equals(op, selectedValue, StringComparison.OrdinalIgnoreCase) ? " selected" : string.Empty;
+            html.Append($"<option value=\"{op}\"{selected}>{op}</option>");
+        }
+
+        html.Append("</select>");
+    }
+
+    private static void RenderSortDirectionSelect(StringBuilder html, string? selectedValue)
+    {
+        html.Append("<select class=\"efui-select\" name=\"sort.0.dir\">");
+        html.Append("<option value=\"\"></option>");
+        foreach (var direction in new[] { "asc", "desc" })
+        {
+            var selected = string.Equals(direction, selectedValue, StringComparison.OrdinalIgnoreCase) ? " selected" : string.Empty;
+            html.Append($"<option value=\"{direction}\"{selected}>{direction}</option>");
+        }
+
+        html.Append("</select>");
+    }
+
     private static void RenderListCell(StringBuilder html, RenderedListCell? value)
     {
         var text = WebUtility.HtmlEncode(value?.Text ?? string.Empty);
@@ -132,25 +199,35 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     private static string BuildTableEnhancementHead(string routePrefix)
         => $"<link rel=\"stylesheet\" href=\"https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css\" /><link rel=\"stylesheet\" href=\"{routePrefix}/assets/efui-table.css\" /><script src=\"https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js\"></script><script defer src=\"{routePrefix}/assets/efui-table.js\"></script>";
 
-    private static void RenderTableEnhancementShell(StringBuilder html, EntityMetadata entity, RenderedListView view)
+    private static void RenderTableEnhancementShell(StringBuilder html, string routePrefix, EntityMetadata entity, RenderedListView view)
     {
         html.Append("<section class=\"efui-table-enhancement\" data-role=\"efui-table-enhancement\">");
+        html.Append("<div class=\"efui-table-loading\" data-role=\"efui-table-loading\" hidden aria-live=\"polite\">Loading table…</div>");
         html.Append("<div class=\"efui-table-host\" data-role=\"efui-table-host\"></div>");
         html.Append("<script type=\"application/json\" data-role=\"efui-table-config\">");
-        html.Append(BuildTableEnhancementConfig(entity, view));
+        html.Append(BuildTableEnhancementConfig(routePrefix, entity, view));
         html.Append("</script></section>");
     }
 
-    private static string BuildTableEnhancementConfig(EntityMetadata entity, RenderedListView view)
+    private static string BuildTableEnhancementConfig(string routePrefix, EntityMetadata entity, RenderedListView view)
     {
         var payload = new
         {
             library = "tabulator",
             entity = entity.RouteName,
-            columns = entity.AllProperties.Select(property => new { field = property.Name, title = property.Name }).ToList(),
-            rows = view.Rows.Select(row => row.Cells.ToDictionary(
-                cell => cell.Key,
-                cell => new { text = cell.Value.Text, href = cell.Value.Href })).ToList(),
+            columns = entity.AllProperties
+                .Select(property => new { field = property.Name, title = property.Name, headerSort = true })
+                .Concat(new[] { new { field = "__actions", title = "Actions", headerSort = false } })
+                .ToList(),
+            rows = view.Rows.Select(row =>
+            {
+                var values = row.Cells.ToDictionary(
+                    cell => cell.Key,
+                    cell => (object?)new { text = cell.Value.Text, href = cell.Value.Href },
+                    StringComparer.Ordinal);
+                values["__actions"] = BuildRowActionsMarkup(routePrefix, entity, row.Key);
+                return values;
+            }).ToList(),
             query = new
             {
                 filters = view.Filters,
@@ -161,6 +238,12 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         };
 
         return JsonSerializer.Serialize(payload).Replace("</script", "<\\/script", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildRowActionsMarkup(string routePrefix, EntityMetadata entity, string rowKey)
+    {
+        var escapedKey = EscapeRouteSegment(rowKey);
+        return $"<a class=\"efui-row-action-link\" href=\"{routePrefix}/{entity.RouteName}/{escapedKey}/edit\">Edit</a><form class=\"efui-row-action-form\" method=\"post\" action=\"{routePrefix}/{entity.RouteName}/{escapedKey}/delete\"><button class=\"efui-row-action-button\" type=\"submit\">Delete</button></form>";
     }
 
     public string RenderEditForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, object? key, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
