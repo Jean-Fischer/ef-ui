@@ -353,6 +353,39 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Get_entity_page_sorts_numeric_scalar_columns_numerically()
+    {
+        var highGroupId = 0;
+        var highGroupName = string.Empty;
+        while (highGroupId < 10)
+        {
+            highGroupName = $"High Group {Guid.NewGuid():N}";
+            highGroupId = await CreateGroupAsync(highGroupName);
+        }
+
+        var html = await _client.GetStringAsync("/simple/groups?sort.0.field=Id&sort.0.dir=asc");
+        using var config = GetTableConfig(html);
+        var orderedNames = config.RootElement.GetProperty("rows")
+            .EnumerateArray()
+            .Select(row => row.GetProperty("Name").GetProperty("text").GetString())
+            .ToList();
+
+        orderedNames.IndexOf("Guests").Should().BeLessThan(orderedNames.IndexOf(highGroupName));
+        html.Should().Contain("Id asc");
+    }
+
+    [Fact]
+    public async Task Get_entity_page_applies_offset_and_limit_after_server_sorting()
+    {
+        var html = await _client.GetStringAsync("/simple/groups?sort.0.field=Id&sort.0.dir=asc&offset=1&limit=2");
+
+        html.Should().Contain("Id asc");
+        html.Should().NotContain(">Admins<");
+        html.Should().Contain(">Guests<");
+        CountTableBodyRows(html).Should().Be(2);
+    }
+
+    [Fact]
     public async Task Get_new_form_renders_only_editable_fields_and_breadcrumbs()
     {
         var html = await _client.GetStringAsync("/simple/users/new");
@@ -629,5 +662,12 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var match = Regex.Match(html, $@"<tr>(?:(?!</tr>).)*{Regex.Escape(value)}(?:(?!</tr>).)*</tr>", RegexOptions.Singleline);
         match.Success.Should().BeTrue();
         return match.Value;
+    }
+
+    private static int CountTableBodyRows(string html)
+    {
+        var bodyMatch = Regex.Match(html, @"<tbody>(.*?)</tbody>", RegexOptions.Singleline);
+        bodyMatch.Success.Should().BeTrue();
+        return Regex.Matches(bodyMatch.Groups[1].Value, @"<tr>", RegexOptions.Singleline).Count;
     }
 }

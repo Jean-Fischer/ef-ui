@@ -416,19 +416,22 @@ public static class EfUiApplicationBuilderExtensions
         foreach (var sort in query.Sorts)
         {
             var property = metadata.AllProperties.Single(candidate => candidate.Name == sort.Field);
-            Func<object, string> keySelector = row => GetQueryDisplayValue(row, property, relatedValueLookups);
+            Func<object, object?> keySelector = row => GetSortKeyValue(row, property, relatedValueLookups);
             var descending = string.Equals(sort.Direction, "desc", StringComparison.OrdinalIgnoreCase);
 
             orderedRows = orderedRows is null
                 ? descending
-                    ? filteredRows.OrderByDescending(keySelector, StringComparer.OrdinalIgnoreCase)
-                    : filteredRows.OrderBy(keySelector, StringComparer.OrdinalIgnoreCase)
+                    ? filteredRows.OrderByDescending(keySelector, SortKeyComparer.Instance)
+                    : filteredRows.OrderBy(keySelector, SortKeyComparer.Instance)
                 : descending
-                    ? orderedRows.ThenByDescending(keySelector, StringComparer.OrdinalIgnoreCase)
-                    : orderedRows.ThenBy(keySelector, StringComparer.OrdinalIgnoreCase);
+                    ? orderedRows.ThenByDescending(keySelector, SortKeyComparer.Instance)
+                    : orderedRows.ThenBy(keySelector, SortKeyComparer.Instance);
         }
 
-        return (orderedRows ?? filteredRows).ToList();
+        return (orderedRows ?? filteredRows)
+            .Skip(query.Offset)
+            .Take(query.Limit)
+            .ToList();
     }
 
     private static bool MatchesFilter(object row, EntityPropertyMetadata property, TableFilterClause filter, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
@@ -448,6 +451,11 @@ public static class EfUiApplicationBuilderExtensions
 
     private static string GetQueryDisplayValue(object row, EntityPropertyMetadata property, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
         => GetRenderedListCellValue(row, property.Name, relatedValueLookups);
+
+    private static object? GetSortKeyValue(object row, EntityPropertyMetadata property, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
+        => relatedValueLookups.ContainsKey(property.Name)
+            ? GetQueryDisplayValue(row, property, relatedValueLookups)
+            : row.GetType().GetProperty(property.Name)?.GetValue(row);
 
     private static RenderedListCell CreateRenderedListCell(string routePrefix, object row, EntityPropertyMetadata property, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
     {
@@ -636,6 +644,41 @@ public static class EfUiApplicationBuilderExtensions
             DateTime dateTime => dateTime.ToString("O"),
             _ => value.ToString() ?? string.Empty
         };
+
+    private sealed class SortKeyComparer : IComparer<object?>
+    {
+        internal static SortKeyComparer Instance { get; } = new();
+
+        public int Compare(object? x, object? y)
+        {
+            if (ReferenceEquals(x, y))
+            {
+                return 0;
+            }
+
+            if (x is null)
+            {
+                return -1;
+            }
+
+            if (y is null)
+            {
+                return 1;
+            }
+
+            if (x is string leftString && y is string rightString)
+            {
+                return StringComparer.OrdinalIgnoreCase.Compare(leftString, rightString);
+            }
+
+            if (x is IComparable comparable && x.GetType() == y.GetType())
+            {
+                return comparable.CompareTo(y);
+            }
+
+            return StringComparer.OrdinalIgnoreCase.Compare(FormatValue(x), FormatValue(y));
+        }
+    }
 
     private static IReadOnlyDictionary<string, string[]> EnsureCollectionFieldsPresent(EntityMetadata metadata, Dictionary<string, string[]> submittedValues, bool isCreate)
     {
