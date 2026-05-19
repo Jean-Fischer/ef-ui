@@ -337,10 +337,6 @@ document.addEventListener('DOMContentLoaded', function () {
       var requestUrl = dataUrl + (query ? '?' + query : '');
       var requestId = ++pendingRequestId;
 
-      if (options && options.replaceHistory) {
-        replaceBrowserUrl(listUrl, params);
-      }
-
       setLoading(true, 'Loading table…');
 
       try {
@@ -360,11 +356,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         await applyPayload(payload);
+        if (options && options.replaceHistory) {
+          replaceBrowserUrl(listUrl, params);
+        }
       } catch {
         if (requestId !== pendingRequestId) {
           return;
         }
 
+        await applyPayload(config);
         setLoading(false, 'Unable to load table.');
       }
     }

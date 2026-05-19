@@ -121,6 +121,9 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().NotContain("headerClick:");
         script.Should().NotContain("title += ' ↑'");
         script.Should().NotContain("efui-query-form");
+        script.IndexOf("replaceBrowserUrl(listUrl, params);", StringComparison.Ordinal).Should().BeGreaterThan(script.IndexOf("await applyPayload(payload);", StringComparison.Ordinal));
+        script.Should().Contain("Unable to load table.");
+        script.Should().Contain("await applyPayload(config);");
         css.Should().Contain(".efui-table-enhancement");
         css.Should().Contain(".efui-table-loading");
         css.Should().Contain(".efui-tabulator-loader");
@@ -275,6 +278,20 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var activeSort = root.GetProperty("query").GetProperty("sorts").EnumerateArray().Single();
         activeSort.GetProperty("Field").GetString().Should().Be("Email");
         activeSort.GetProperty("Direction").GetString().Should().Be("desc");
+    }
+
+    [Fact]
+    public async Task Get_entity_data_endpoint_surfaces_invalid_query_rules_as_json_status_errors()
+    {
+        using var response = await _client.GetAsync("/simple/users/data?filter.0.field=DropTable&filter.0.op=contains&filter.0.value=Ada&sort.0.field=Email&sort.0.dir=sideways");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/json");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var errors = payload.RootElement.GetProperty("status").GetProperty("errors").EnumerateArray().Select(error => error.GetString() ?? string.Empty).ToList();
+        errors.Should().Contain(error => error.Contains("Unsupported filter field", StringComparison.Ordinal));
+        errors.Should().Contain(error => error.Contains("Unsupported sort direction", StringComparison.Ordinal));
     }
 
     [Fact]
