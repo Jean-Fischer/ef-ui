@@ -93,13 +93,14 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().Contain("setSort");
         script.Should().Contain("initialSort");
         script.Should().Contain("initialHeaderFilter");
-        script.Should().Contain("headerFilterLiveFilterDelay");
+        script.Should().Contain("headerFilterLiveFilter: column.headerFilterLiveFilter !== false");
         script.Should().Contain("dataSorting");
         script.Should().Contain("dataFiltered");
         script.Should().Contain("readActiveHeaderFilters(table)");
         script.Should().Contain("table.getHeaderFilters()");
-        script.Should().Contain("clearTimeout");
-        script.Should().Contain("setTimeout");
+        script.Should().NotContain("headerFilterLiveFilterDelay");
+        script.Should().NotContain("filterNavigationHandle = setTimeout(function () {");
+        script.Should().NotContain("clearTimeout(filterNavigationHandle)");
         script.Should().Contain("dataLoaderLoading");
         script.Should().NotContain("setLoading(");
         script.Should().NotContain("efui-table-host-loading");
@@ -243,6 +244,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var nameColumn = GetColumn(root, "Name");
         nameColumn.GetProperty("headerSort").GetBoolean().Should().BeTrue();
         nameColumn.GetProperty("headerFilter").GetString().Should().Be("input");
+        nameColumn.GetProperty("headerFilterLiveFilter").GetBoolean().Should().BeFalse();
         nameColumn.GetProperty("filterOperator").GetString().Should().Be("contains");
         nameColumn.GetProperty("activeFilterOperator").GetString().Should().Be("contains");
         nameColumn.GetProperty("headerFilterValue").GetString().Should().Be("Ada");

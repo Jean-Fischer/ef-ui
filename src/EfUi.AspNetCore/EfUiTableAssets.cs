@@ -105,7 +105,6 @@ document.addEventListener('DOMContentLoaded', function () {
     var listUrl = config.listUrl || window.location.pathname;
     var dataUrl = config.dataUrl || (listUrl + '/data');
     var columnMap = {};
-    var filterNavigationHandle = 0;
     var readyForNavigation = false;
     var applyingResponse = false;
     var pendingRequestId = 0;
@@ -233,6 +232,7 @@ document.addEventListener('DOMContentLoaded', function () {
           headerSort: column.headerSort !== false,
           headerSortTristate: column.headerSort !== false,
           headerFilter: column.headerFilter === false ? false : column.headerFilter,
+          headerFilterLiveFilter: column.headerFilterLiveFilter !== false,
           headerFilterFunc: isActionsColumn || column.headerFilter === false
             ? undefined
             : function () {
@@ -371,7 +371,6 @@ document.addEventListener('DOMContentLoaded', function () {
       reactiveData: false,
       initialSort: readInitialSort(config.query && config.query.sorts),
       initialHeaderFilter: readInitialHeaderFilter(config.columns),
-      headerFilterLiveFilterDelay: 400,
       dataLoader: true,
       dataLoaderLoading: '<div class="efui-tabulator-loader">Loading table…</div>',
       dataLoaderError: '<div class="efui-tabulator-loader efui-tabulator-loader-error">Unable to load table.</div>'
@@ -395,14 +394,11 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      clearTimeout(filterNavigationHandle);
-      filterNavigationHandle = setTimeout(function () {
-        var state = readTableState(table, currentSorters);
-        requestTableRefresh(function (params) {
-          applySortQuery(params, state.sorters);
-          applyFilterQuery(params, state.filters);
-        });
-      }, 400);
+      var state = readTableState(table, currentSorters);
+      requestTableRefresh(function (params) {
+        applySortQuery(params, state.sorters);
+        applyFilterQuery(params, state.filters);
+      });
     });
 
     window.addEventListener('popstate', function () {

@@ -174,6 +174,7 @@ public class HtmlPageRendererTests
         nameColumn.GetProperty("title").GetString().Should().Be("Name");
         nameColumn.GetProperty("headerSort").GetBoolean().Should().BeTrue();
         nameColumn.GetProperty("headerFilter").GetString().Should().Be("input");
+        nameColumn.GetProperty("headerFilterLiveFilter").GetBoolean().Should().BeFalse();
         nameColumn.GetProperty("filterOperator").GetString().Should().Be("contains");
         nameColumn.GetProperty("activeFilterOperator").GetString().Should().Be("contains");
         nameColumn.GetProperty("headerFilterValue").GetString().Should().Be("Ada");
