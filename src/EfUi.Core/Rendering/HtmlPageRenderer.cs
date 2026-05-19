@@ -215,10 +215,6 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
     public string RenderEditForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, object? key, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
     {
-        var action = isCreate
-            ? $"{routePrefix}/{entity.RouteName}"
-            : $"{routePrefix}/{entity.RouteName}/{EscapeRouteSegment(key)}";
-
         var html = new StringBuilder();
         AppendDocumentStart(html, routePrefix, "efui-form-page");
         RenderBreadcrumbs(html, [
@@ -227,59 +223,24 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             new BreadcrumbItem(entity.DisplayName, $"{routePrefix}/{entity.RouteName}"),
             new BreadcrumbItem(isCreate ? "New" : "Edit")
         ]);
-        html.Append($"<form class=\"efui-form\" method=\"post\" action=\"{action}\">");
+        html.Append($"<form class=\"efui-form\" method=\"post\" action=\"{GetEditFormAction(routePrefix, entity, isCreate, key)}\">");
         html.Append($"<h1 class=\"efui-form-title\">{WebUtility.HtmlEncode(entity.DisplayName)}</h1>");
 
-        if (errors.Count > 0)
-        {
-            html.Append("<div class=\"efui-error-summary\">");
-            foreach (var error in errors)
-            {
-                foreach (var message in error.Value)
-                {
-                    html.Append($"<div class=\"efui-error\">{WebUtility.HtmlEncode(message)}</div>");
-                }
-            }
-
-            html.Append("</div>");
-        }
+        RenderFormErrors(html, errors);
 
         if (!isCreate)
         {
-            var keyValue = model is null
-                ? FormatValue(key)
-                : FormatValue(model.GetType().GetProperty(entity.PrimaryKeyProperty.Name)?.GetValue(model));
-
-            html.Append("<div class=\"efui-field\">");
-            html.Append($"<label class=\"efui-label\">{WebUtility.HtmlEncode(entity.PrimaryKeyProperty.Name)}</label>");
-            html.Append($"<span class=\"efui-readonly-value\">{WebUtility.HtmlEncode(keyValue)}</span>");
-            html.Append("</div>");
+            RenderPrimaryKeyField(html, entity, model, key);
         }
 
         var editableFields = isCreate ? entity.CreateEditableFields : entity.UpdateEditableFields;
 
         foreach (var field in editableFields)
         {
-            html.Append("<div class=\"efui-field\">");
-            html.Append($"<label class=\"efui-label\">{WebUtility.HtmlEncode(field.Name)}</label>");
-
-            switch (field.Kind)
-            {
-                case EditableFieldKind.Reference:
-                    RenderReferenceField(html, field, model, submittedValues, fieldOptions);
-                    break;
-                case EditableFieldKind.Collection:
-                    RenderCollectionField(html, field, fieldOptions);
-                    break;
-                default:
-                    RenderScalarField(html, field, model, submittedValues);
-                    break;
-            }
-
-            html.Append("</div>");
+            RenderEditableField(html, field, model, submittedValues, fieldOptions);
         }
 
-        if (editableFields.Any(field => field.Kind == EditableFieldKind.Collection))
+        if (HasCollectionFields(editableFields))
         {
             RenderCollectionPickerScript(html);
         }
@@ -292,6 +253,75 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append("<button class=\"efui-button\" type=\"submit\">Save</button></form>");
         html.Append("</main></body></html>");
         return html.ToString();
+    }
+
+    private static string GetEditFormAction(string routePrefix, EntityMetadata entity, bool isCreate, object? key)
+        => isCreate
+            ? $"{routePrefix}/{entity.RouteName}"
+            : $"{routePrefix}/{entity.RouteName}/{EscapeRouteSegment(key)}";
+
+    private static void RenderFormErrors(StringBuilder html, IReadOnlyDictionary<string, string[]> errors)
+    {
+        if (errors.Count == 0)
+        {
+            return;
+        }
+
+        html.Append("<div class=\"efui-error-summary\">");
+        foreach (var error in errors)
+        {
+            foreach (var message in error.Value)
+            {
+                html.Append($"<div class=\"efui-error\">{WebUtility.HtmlEncode(message)}</div>");
+            }
+        }
+
+        html.Append("</div>");
+    }
+
+    private static void RenderPrimaryKeyField(StringBuilder html, EntityMetadata entity, object? model, object? key)
+    {
+        var keyValue = GetFieldValue(model, entity.PrimaryKeyProperty.Name, null, null, key);
+
+        html.Append("<div class=\"efui-field\">");
+        html.Append($"<label class=\"efui-label\">{WebUtility.HtmlEncode(entity.PrimaryKeyProperty.Name)}</label>");
+        html.Append($"<span class=\"efui-readonly-value\">{WebUtility.HtmlEncode(keyValue)}</span>");
+        html.Append("</div>");
+    }
+
+    private static void RenderEditableField(StringBuilder html, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string[]>? submittedValues, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions)
+    {
+        html.Append("<div class=\"efui-field\">");
+        html.Append($"<label class=\"efui-label\">{WebUtility.HtmlEncode(field.Name)}</label>");
+
+        switch (field.Kind)
+        {
+            case EditableFieldKind.Reference:
+                RenderReferenceField(html, field, model, submittedValues, fieldOptions);
+                break;
+            case EditableFieldKind.Collection:
+                RenderCollectionField(html, field, fieldOptions);
+                break;
+            default:
+                RenderScalarField(html, field, model, submittedValues);
+                break;
+        }
+
+        html.Append("</div>");
+    }
+
+    private static bool HasCollectionFields(IReadOnlyList<EditableFieldMetadata> editableFields)
+        => editableFields.Any(field => field.Kind == EditableFieldKind.Collection);
+
+    private static string GetFieldValue(object? model, string propertyName, IReadOnlyDictionary<string, string[]>? submittedValues, string? submittedFieldName, object? fallbackValue = null)
+    {
+        if (submittedValues is not null && submittedFieldName is not null && submittedValues.TryGetValue(submittedFieldName, out var submittedValue))
+        {
+            return submittedValue.FirstOrDefault() ?? string.Empty;
+        }
+
+        var source = model is null ? fallbackValue : model.GetType().GetProperty(propertyName)?.GetValue(model);
+        return FormatValue(source);
     }
 
     private static void RenderScalarField(StringBuilder html, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string[]>? submittedValues)
@@ -314,11 +344,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
     private static void RenderReferenceField(StringBuilder html, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string[]>? submittedValues, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions)
     {
-        var currentValue = submittedValues is not null && submittedValues.TryGetValue(field.Name, out var submittedValue)
-            ? submittedValue.FirstOrDefault() ?? string.Empty
-            : model is null
-                ? string.Empty
-                : FormatValue(model.GetType().GetProperty(field.ScalarPropertyName!)?.GetValue(model));
+        var currentValue = GetFieldValue(model, field.ScalarPropertyName!, submittedValues, field.Name);
 
         html.Append($"<select class=\"efui-select\" name=\"{field.Name}\">");
         html.Append("<option value=\"\"></option>");

@@ -36,6 +36,41 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
     private static EntityMetadata? Build(IEntityType entityType, List<EntityDiscoveryIssue> issues)
     {
         var routeName = GetRouteName(entityType);
+        if (!TryGetPrimaryKeyProperty(entityType, routeName, issues, out var keyProperty))
+        {
+            return null;
+        }
+
+        var scalarProperties = BuildScalarProperties(entityType, keyProperty);
+        var referenceFields = BuildReferenceFields(entityType, routeName, scalarProperties, issues, out var relatedPropertyMap);
+        scalarProperties = ApplyRelatedPropertyMap(scalarProperties, relatedPropertyMap);
+
+        var suppressedScalarPropertyNames = referenceFields
+            .Select(field => field.Property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var collectionFields = BuildManyToManyCollectionFields(entityType, routeName, issues);
+        var (oneToManyFields, relatedManagementLinks) = BuildOneToManyFields(entityType, routeName);
+
+        var primaryKeyMetadata = scalarProperties.Single(property => property.IsPrimaryKey);
+        var editableProperties = scalarProperties.Where(property => property.IsEditableOnUpdate).ToList();
+        var createEditableFields = BuildCreateEditableFields(scalarProperties, referenceFields, suppressedScalarPropertyNames);
+        var updateEditableFields = BuildUpdateEditableFields(editableProperties, referenceFields, suppressedScalarPropertyNames, collectionFields, oneToManyFields);
+
+        return new EntityMetadata(
+            entityType.ClrType.Name,
+            routeName,
+            entityType.ClrType,
+            primaryKeyMetadata,
+            scalarProperties,
+            editableProperties,
+            createEditableFields,
+            updateEditableFields,
+            relatedManagementLinks);
+    }
+
+    private static bool TryGetPrimaryKeyProperty(IEntityType entityType, string routeName, List<EntityDiscoveryIssue> issues, out IProperty keyProperty)
+    {
         var keyProperties = entityType.FindPrimaryKey()?.Properties;
         if (keyProperties is null || keyProperties.Count != 1)
         {
@@ -47,11 +82,16 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 routeName,
                 $"Entity '{entityType.ClrType.Name}' {reason} and cannot be rendered yet.",
                 CanRender: false));
-            return null;
+            keyProperty = null!;
+            return false;
         }
 
-        var keyProperty = keyProperties[0];
-        var scalarProperties = entityType.GetProperties()
+        keyProperty = keyProperties[0];
+        return true;
+    }
+
+    private static IReadOnlyList<EntityPropertyMetadata> BuildScalarProperties(IEntityType entityType, IProperty keyProperty)
+        => entityType.GetProperties()
             .Select(property => new EntityPropertyMetadata(
                 property.Name,
                 property.ClrType,
@@ -60,8 +100,10 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 property.Name == keyProperty.Name))
             .ToList();
 
+    private static List<ReferenceFieldMetadata> BuildReferenceFields(IEntityType entityType, string routeName, IReadOnlyList<EntityPropertyMetadata> scalarProperties, List<EntityDiscoveryIssue> issues, out Dictionary<string, EntityPropertyMetadata> relatedPropertyMap)
+    {
         var referenceFields = new List<ReferenceFieldMetadata>();
-        var relatedPropertyMap = new Dictionary<string, EntityPropertyMetadata>(StringComparer.Ordinal);
+        relatedPropertyMap = new Dictionary<string, EntityPropertyMetadata>(StringComparer.Ordinal);
 
         foreach (var foreignKey in entityType.GetForeignKeys())
         {
@@ -125,16 +167,18 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             };
         }
 
-        scalarProperties = scalarProperties
+        return referenceFields;
+    }
+
+    private static IReadOnlyList<EntityPropertyMetadata> ApplyRelatedPropertyMap(IReadOnlyList<EntityPropertyMetadata> scalarProperties, IReadOnlyDictionary<string, EntityPropertyMetadata> relatedPropertyMap)
+        => scalarProperties
             .Select(property => relatedPropertyMap.TryGetValue(property.Name, out var relatedProperty)
                 ? relatedProperty
                 : property)
             .ToList();
 
-        var suppressedScalarPropertyNames = referenceFields
-            .Select(field => field.Property.Name)
-            .ToHashSet(StringComparer.Ordinal);
-
+    private static List<EditableFieldMetadata> BuildManyToManyCollectionFields(IEntityType entityType, string routeName, List<EntityDiscoveryIssue> issues)
+    {
         var collectionFields = new List<EditableFieldMetadata>();
         foreach (var navigation in entityType.GetSkipNavigations().Where(navigation => navigation.IsCollection))
         {
@@ -160,6 +204,11 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 ResolveRelatedDisplayPropertyName(navigation.TargetEntityType)));
         }
 
+        return collectionFields;
+    }
+
+    private static (List<EditableFieldMetadata> OneToManyFields, List<RelatedEntityManagementLink> RelatedManagementLinks) BuildOneToManyFields(IEntityType entityType, string routeName)
+    {
         var oneToManyFields = new List<EditableFieldMetadata>();
         var relatedManagementLinks = new List<RelatedEntityManagementLink>();
 
@@ -193,10 +242,11 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 ResolveRelatedDisplayPropertyName(navigation.TargetEntityType)));
         }
 
-        var primaryKeyMetadata = scalarProperties.Single(property => property.IsPrimaryKey);
-        var editableProperties = scalarProperties.Where(property => property.IsEditableOnUpdate).ToList();
+        return (oneToManyFields, relatedManagementLinks);
+    }
 
-        var createEditableFields = scalarProperties
+    private static List<EditableFieldMetadata> BuildCreateEditableFields(IReadOnlyList<EntityPropertyMetadata> scalarProperties, IReadOnlyList<ReferenceFieldMetadata> referenceFields, ISet<string> suppressedScalarPropertyNames)
+        => scalarProperties
             .Where(property => property.IsEditableOnCreate)
             .Where(property => !suppressedScalarPropertyNames.Contains(property.Name))
             .Select(CreateScalarField)
@@ -213,7 +263,8 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                     RelatedDisplayPropertyName: field.RelatedDisplayPropertyName)))
             .ToList();
 
-        var updateEditableFields = editableProperties
+    private static List<EditableFieldMetadata> BuildUpdateEditableFields(IReadOnlyList<EntityPropertyMetadata> editableProperties, IReadOnlyList<ReferenceFieldMetadata> referenceFields, ISet<string> suppressedScalarPropertyNames, IReadOnlyList<EditableFieldMetadata> collectionFields, IReadOnlyList<EditableFieldMetadata> oneToManyFields)
+        => editableProperties
             .Where(property => !suppressedScalarPropertyNames.Contains(property.Name))
             .Select(CreateScalarField)
             .Concat(referenceFields
@@ -230,18 +281,6 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             .Concat(collectionFields)
             .Concat(oneToManyFields)
             .ToList();
-
-        return new EntityMetadata(
-            entityType.ClrType.Name,
-            routeName,
-            entityType.ClrType,
-            primaryKeyMetadata,
-            scalarProperties,
-            editableProperties,
-            createEditableFields,
-            updateEditableFields,
-            relatedManagementLinks);
-    }
 
     private static CollectionNavigationClassification? ClassifyCollectionNavigation(IEntityType entityType, INavigation navigation)
     {

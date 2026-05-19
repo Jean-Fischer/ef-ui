@@ -317,66 +317,95 @@ public static class EfUiApplicationBuilderExtensions
         var fields = metadata.AllProperties
             .Select(property => new TableQueryField(property.Name, IsFilterable: true, IsSortable: true))
             .ToDictionary(field => field.Name, StringComparer.Ordinal);
-
-        var filters = new List<TableFilterClause>();
-        var sorts = new List<TableSortClause>();
         var errors = new List<string>();
-
-        foreach (var index in GetClauseIndexes(request.Query, "filter"))
-        {
-            var field = request.Query[$"filter.{index}.field"].FirstOrDefault();
-            var op = request.Query[$"filter.{index}.op"].FirstOrDefault();
-            var value = request.Query[$"filter.{index}.value"].FirstOrDefault();
-
-            if (string.IsNullOrWhiteSpace(field) && string.IsNullOrWhiteSpace(op) && string.IsNullOrWhiteSpace(value))
-            {
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(field) || !fields.TryGetValue(field, out var fieldDefinition) || !fieldDefinition.IsFilterable)
-            {
-                errors.Add($"Unsupported filter field '{field}'.");
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(op) || !fieldDefinition.SupportedOperators.Contains(op, StringComparer.OrdinalIgnoreCase))
-            {
-                errors.Add($"Unsupported filter operator '{op}' for field '{field}'.");
-                continue;
-            }
-
-            filters.Add(new TableFilterClause(field, op, value));
-        }
-
-        foreach (var index in GetClauseIndexes(request.Query, "sort"))
-        {
-            var field = request.Query[$"sort.{index}.field"].FirstOrDefault();
-            var direction = request.Query[$"sort.{index}.dir"].FirstOrDefault();
-
-            if (string.IsNullOrWhiteSpace(field) && string.IsNullOrWhiteSpace(direction))
-            {
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(field) || !fields.TryGetValue(field, out var fieldDefinition) || !fieldDefinition.IsSortable)
-            {
-                errors.Add($"Unsupported sort field '{field}'.");
-                continue;
-            }
-
-            if (!string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(direction, "desc", StringComparison.OrdinalIgnoreCase))
-            {
-                errors.Add($"Unsupported sort direction '{direction}'.");
-                continue;
-            }
-
-            sorts.Add(new TableSortClause(field, direction!));
-        }
+        var filters = ParseFilterClauses(request.Query, fields, errors).ToList();
+        var sorts = ParseSortClauses(request.Query, fields, errors).ToList();
 
         return new BoundTableQuery(
             new TableQuery(filters, sorts, ReadNonNegativeInt(request, "offset", 0, errors), ReadPositiveInt(request, "limit", 50, errors)),
             errors);
+    }
+
+    private static IEnumerable<TableFilterClause> ParseFilterClauses(IQueryCollection query, IReadOnlyDictionary<string, TableQueryField> fields, ICollection<string> errors)
+    {
+        foreach (var index in GetClauseIndexes(query, "filter"))
+        {
+            if (TryParseFilterClause(query, index, fields, errors, out var filter))
+            {
+                yield return filter;
+            }
+        }
+    }
+
+    private static bool TryParseFilterClause(IQueryCollection query, int index, IReadOnlyDictionary<string, TableQueryField> fields, ICollection<string> errors, out TableFilterClause filter)
+    {
+        var field = query[$"filter.{index}.field"].FirstOrDefault();
+        var op = query[$"filter.{index}.op"].FirstOrDefault();
+        var value = query[$"filter.{index}.value"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(field) && string.IsNullOrWhiteSpace(op) && string.IsNullOrWhiteSpace(value))
+        {
+            filter = default!;
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(field) || !fields.TryGetValue(field, out var fieldDefinition) || !fieldDefinition.IsFilterable)
+        {
+            errors.Add($"Unsupported filter field '{field}'.");
+            filter = default!;
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(op) || !fieldDefinition.SupportedOperators.Contains(op, StringComparer.OrdinalIgnoreCase))
+        {
+            errors.Add($"Unsupported filter operator '{op}' for field '{field}'.");
+            filter = default!;
+            return false;
+        }
+
+        filter = new TableFilterClause(field, op, value);
+        return true;
+    }
+
+    private static IEnumerable<TableSortClause> ParseSortClauses(IQueryCollection query, IReadOnlyDictionary<string, TableQueryField> fields, ICollection<string> errors)
+    {
+        foreach (var index in GetClauseIndexes(query, "sort"))
+        {
+            if (TryParseSortClause(query, index, fields, errors, out var sort))
+            {
+                yield return sort;
+            }
+        }
+    }
+
+    private static bool TryParseSortClause(IQueryCollection query, int index, IReadOnlyDictionary<string, TableQueryField> fields, ICollection<string> errors, out TableSortClause sort)
+    {
+        var field = query[$"sort.{index}.field"].FirstOrDefault();
+        var direction = query[$"sort.{index}.dir"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(field) && string.IsNullOrWhiteSpace(direction))
+        {
+            sort = default!;
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(field) || !fields.TryGetValue(field, out var fieldDefinition) || !fieldDefinition.IsSortable)
+        {
+            errors.Add($"Unsupported sort field '{field}'.");
+            sort = default!;
+            return false;
+        }
+
+        if (!string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(direction, "desc", StringComparison.OrdinalIgnoreCase))
+        {
+            errors.Add($"Unsupported sort direction '{direction}'.");
+            sort = default!;
+            return false;
+        }
+
+        sort = new TableSortClause(field, direction!);
+        return true;
     }
 
     private static IEnumerable<int> GetClauseIndexes(IQueryCollection query, string prefix)

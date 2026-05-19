@@ -214,75 +214,122 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
 
     private async Task<CrudOperationResult> ApplyOneToManyCollectionFieldAsync(DbContext dbContext, EntityMetadata entity, object instance, EditableFieldMetadata field, IReadOnlyList<string> rawValues)
     {
-        if (field.NavigationPropertyName is null || field.RelatedClrType is null || field.ScalarPropertyName is null)
+        if (!TryGetOneToManyCollectionContext(dbContext, field, out var childEntityType, out var childKeyProperty, out var childForeignKeyProperty, out var failure))
         {
-            return CrudOperationResult.Failure(field.Name, "Invalid collection configuration.");
+            return failure;
         }
 
-        var childEntityType = dbContext.Model.FindEntityType(field.RelatedClrType);
-        var childKeyProperty = childEntityType?.FindPrimaryKey()?.Properties.SingleOrDefault();
-        var childForeignKeyProperty = childEntityType?.FindProperty(field.ScalarPropertyName);
-        if (childKeyProperty is null || childForeignKeyProperty is null)
+        if (!TryBindSelectedChildKeys(rawValues, childKeyProperty.ClrType, field.Name, out var selectedChildKeys, out failure))
         {
-            return CrudOperationResult.Failure(field.Name, "Related entity must have a single primary key.");
-        }
-
-        var selectedChildKeys = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var selectedValue in rawValues.Where(value => !string.IsNullOrWhiteSpace(value)))
-        {
-            var bindResult = binder.Bind(childKeyProperty.ClrType, selectedValue);
-            if (!bindResult.IsSuccess)
-            {
-                return CrudOperationResult.Failure(field.Name, bindResult.Error ?? "Invalid value.");
-            }
-
-            selectedChildKeys.Add(FormatValue(bindResult.Value));
+            return failure;
         }
 
         var parentKeyValue = instance.GetType().GetProperty(entity.PrimaryKeyProperty.Name)?.GetValue(instance);
-        var allChildren = ReadRows(dbContext, field.RelatedClrType);
-        var childrenByKey = allChildren.ToDictionary(
-            child => FormatValue(child.GetType().GetProperty(childKeyProperty.Name)?.GetValue(child)),
-            child => child,
-            StringComparer.Ordinal);
+        var childrenByKey = BuildChildrenByKey(dbContext, childEntityType.ClrType, childKeyProperty.Name);
 
-        foreach (var selectedChildKey in selectedChildKeys)
+        if (!TryValidateSelectedChildren(childrenByKey, selectedChildKeys, childForeignKeyProperty.Name, parentKeyValue, field.Name, out failure))
         {
-            if (!childrenByKey.TryGetValue(selectedChildKey, out var selectedChild))
-            {
-                return CrudOperationResult.Failure(field.Name, "Selected related row not found.");
-            }
-
-            var ownerValue = selectedChild.GetType().GetProperty(field.ScalarPropertyName)?.GetValue(selectedChild);
-            if (ownerValue is not null && !Equals(ownerValue, parentKeyValue))
-            {
-                return CrudOperationResult.Failure(field.Name, "Selected related row is already assigned to another parent.");
-            }
+            return failure;
         }
 
-        var currentChildren = GetCurrentChildren(instance, field.NavigationPropertyName)
-            .ToList();
-        var removedChildren = currentChildren
-            .Where(child => !selectedChildKeys.Contains(FormatValue(child.GetType().GetProperty(childKeyProperty.Name)?.GetValue(child))))
-            .ToList();
-
+        var removedChildren = GetRemovedChildren(instance, field.NavigationPropertyName, childKeyProperty.Name, selectedChildKeys).ToList();
         if (field.IsRequired && removedChildren.Count != 0)
         {
             return CrudOperationResult.Failure(field.Name, "Required related rows cannot be removed without reassignment.");
         }
 
+        ApplyChildAssignments(childrenByKey, childForeignKeyProperty.Name, parentKeyValue, selectedChildKeys, removedChildren);
+        return CrudOperationResult.Success();
+    }
+
+    private bool TryGetOneToManyCollectionContext(DbContext dbContext, EditableFieldMetadata field, out Microsoft.EntityFrameworkCore.Metadata.IEntityType childEntityType, out Microsoft.EntityFrameworkCore.Metadata.IProperty childKeyProperty, out Microsoft.EntityFrameworkCore.Metadata.IProperty childForeignKeyProperty, out CrudOperationResult failure)
+    {
+        childEntityType = null!;
+        childKeyProperty = null!;
+        childForeignKeyProperty = null!;
+
+        if (field.NavigationPropertyName is null || field.RelatedClrType is null || field.ScalarPropertyName is null)
+        {
+            failure = CrudOperationResult.Failure(field.Name, "Invalid collection configuration.");
+            return false;
+        }
+
+        childEntityType = dbContext.Model.FindEntityType(field.RelatedClrType);
+        childKeyProperty = childEntityType?.FindPrimaryKey()?.Properties.SingleOrDefault();
+        childForeignKeyProperty = childEntityType?.FindProperty(field.ScalarPropertyName);
+        if (childEntityType is null || childKeyProperty is null || childForeignKeyProperty is null)
+        {
+            failure = CrudOperationResult.Failure(field.Name, "Related entity must have a single primary key.");
+            return false;
+        }
+
+        failure = CrudOperationResult.Success();
+        return true;
+    }
+
+    private bool TryBindSelectedChildKeys(IReadOnlyList<string> rawValues, Type childKeyType, string fieldName, out HashSet<string> selectedChildKeys, out CrudOperationResult failure)
+    {
+        selectedChildKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var selectedValue in rawValues.Where(value => !string.IsNullOrWhiteSpace(value)))
+        {
+            var bindResult = binder.Bind(childKeyType, selectedValue);
+            if (!bindResult.IsSuccess)
+            {
+                failure = CrudOperationResult.Failure(fieldName, bindResult.Error ?? "Invalid value.");
+                return false;
+            }
+
+            selectedChildKeys.Add(FormatValue(bindResult.Value));
+        }
+
+        failure = CrudOperationResult.Success();
+        return true;
+    }
+
+    private static IReadOnlyDictionary<string, object> BuildChildrenByKey(DbContext dbContext, Type childEntityClrType, string childKeyPropertyName)
+        => ReadRows(dbContext, childEntityClrType).ToDictionary(
+            child => FormatValue(child.GetType().GetProperty(childKeyPropertyName)?.GetValue(child)),
+            child => child,
+            StringComparer.Ordinal);
+
+    private static bool TryValidateSelectedChildren(IReadOnlyDictionary<string, object> childrenByKey, HashSet<string> selectedChildKeys, string childForeignKeyPropertyName, object? parentKeyValue, string fieldName, out CrudOperationResult failure)
+    {
+        foreach (var selectedChildKey in selectedChildKeys)
+        {
+            if (!childrenByKey.TryGetValue(selectedChildKey, out var selectedChild))
+            {
+                failure = CrudOperationResult.Failure(fieldName, "Selected related row not found.");
+                return false;
+            }
+
+            var ownerValue = selectedChild.GetType().GetProperty(childForeignKeyPropertyName)?.GetValue(selectedChild);
+            if (ownerValue is not null && !Equals(ownerValue, parentKeyValue))
+            {
+                failure = CrudOperationResult.Failure(fieldName, "Selected related row is already assigned to another parent.");
+                return false;
+            }
+        }
+
+        failure = CrudOperationResult.Success();
+        return true;
+    }
+
+    private static IEnumerable<object> GetRemovedChildren(object instance, string navigationPropertyName, string childKeyPropertyName, HashSet<string> selectedChildKeys)
+        => GetCurrentChildren(instance, navigationPropertyName)
+            .Where(child => !selectedChildKeys.Contains(FormatValue(child.GetType().GetProperty(childKeyPropertyName)?.GetValue(child))));
+
+    private static void ApplyChildAssignments(IReadOnlyDictionary<string, object> childrenByKey, string childForeignKeyPropertyName, object? parentKeyValue, HashSet<string> selectedChildKeys, IReadOnlyList<object> removedChildren)
+    {
         foreach (var selectedChildKey in selectedChildKeys)
         {
             var selectedChild = childrenByKey[selectedChildKey];
-            selectedChild.GetType().GetProperty(field.ScalarPropertyName)?.SetValue(selectedChild, parentKeyValue);
+            selectedChild.GetType().GetProperty(childForeignKeyPropertyName)?.SetValue(selectedChild, parentKeyValue);
         }
 
         foreach (var removedChild in removedChildren)
         {
-            removedChild.GetType().GetProperty(field.ScalarPropertyName)?.SetValue(removedChild, null);
+            removedChild.GetType().GetProperty(childForeignKeyPropertyName)?.SetValue(removedChild, null);
         }
-
-        return CrudOperationResult.Success();
     }
 
     private static IReadOnlyList<object> ReadRows(DbContext dbContext, Type entityClrType)
