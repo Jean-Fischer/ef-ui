@@ -162,7 +162,7 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         var invoiceIdColumn = GetColumn(root, "InvoiceId");
         invoiceIdColumn.GetProperty("headerSort").GetBoolean().Should().BeTrue();
         invoiceIdColumn.GetProperty("headerFilter").GetString().Should().Be("input");
-        invoiceIdColumn.GetProperty("filterOperator").GetString().Should().Be("contains");
+        invoiceIdColumn.GetProperty("filterOperator").GetString().Should().Be("eq");
         invoiceIdColumn.GetProperty("activeFilterOperator").GetString().Should().Be("eq");
         invoiceIdColumn.GetProperty("headerFilterValue").GetString().Should().Be("1");
 
@@ -196,7 +196,7 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         var mediaTypeColumn = GetColumn(root, "MediaTypeId");
         mediaTypeColumn.GetProperty("headerSort").GetBoolean().Should().BeTrue();
         mediaTypeColumn.GetProperty("headerFilter").GetString().Should().Be("input");
-        mediaTypeColumn.GetProperty("filterOperator").GetString().Should().Be("contains");
+        mediaTypeColumn.GetProperty("filterOperator").GetString().Should().Be("eq");
         mediaTypeColumn.GetProperty("activeFilterOperator").GetString().Should().Be("eq");
         mediaTypeColumn.GetProperty("headerFilterValue").GetString().Should().Be("1");
 

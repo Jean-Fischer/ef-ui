@@ -204,7 +204,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
                         title = property.Name,
                         headerSort = true,
                         headerFilter = (object)"input",
-                        filterOperator = (string?)GetDefaultFilterOperator(property),
+                        filterOperator = (string?)(activeFilter?.Operator ?? GetDefaultFilterOperator(property)),
                         activeFilterOperator = activeFilter?.Operator,
                         headerFilterValue = activeFilter?.Value,
                         sortDirection = activeSort?.Direction,
