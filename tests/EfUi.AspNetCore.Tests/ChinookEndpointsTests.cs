@@ -178,10 +178,12 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         var mediaTypeColumn = GetColumn(root, "MediaTypeId");
         mediaTypeColumn.GetProperty("headerSort").GetBoolean().Should().BeTrue();
         mediaTypeColumn.GetProperty("headerFilter").GetString().Should().Be("input");
-        mediaTypeColumn.GetProperty("filterOperator").GetString().Should().Be("eq");
+        mediaTypeColumn.GetProperty("filterOperator").GetString().Should().Be("contains");
+        mediaTypeColumn.GetProperty("activeFilterOperator").GetString().Should().Be("eq");
         mediaTypeColumn.GetProperty("headerFilterValue").GetString().Should().Be("1");
 
         var actionsColumn = GetColumn(root, "__actions");
+        actionsColumn.GetProperty("activeFilterOperator").ValueKind.Should().Be(JsonValueKind.Null);
         actionsColumn.GetProperty("headerSort").GetBoolean().Should().BeFalse();
         actionsColumn.GetProperty("headerFilter").ValueKind.Should().Be(JsonValueKind.False);
         actionsColumn.GetProperty("filterOperator").ValueKind.Should().Be(JsonValueKind.Null);

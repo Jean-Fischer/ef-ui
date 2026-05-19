@@ -204,7 +204,8 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
                         title = property.Name,
                         headerSort = true,
                         headerFilter = (object)"input",
-                        filterOperator = (string?)(activeFilter?.Operator ?? "contains"),
+                        filterOperator = (string?)GetDefaultFilterOperator(property),
+                        activeFilterOperator = activeFilter?.Operator,
                         headerFilterValue = activeFilter?.Value,
                         sortDirection = activeSort?.Direction,
                         isFilterable = true
@@ -219,6 +220,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
                         headerSort = false,
                         headerFilter = (object)false,
                         filterOperator = (string?)null,
+                        activeFilterOperator = (string?)null,
                         headerFilterValue = (string?)null,
                         sortDirection = (string?)null,
                         isFilterable = false
@@ -245,6 +247,11 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
         return JsonSerializer.Serialize(payload).Replace("</script", "<\\/script", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static string GetDefaultFilterOperator(EntityPropertyMetadata property)
+        => property.RelatedRouteName is not null || property.ClrType == typeof(string)
+            ? "contains"
+            : "eq";
 
     private static string BuildRowActionsMarkup(string routePrefix, EntityMetadata entity, string rowKey)
     {
