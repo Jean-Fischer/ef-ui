@@ -36,8 +36,8 @@ public static class EfUiApplicationBuilderExtensions
         app.MapGet(options.RoutePrefix, (IServiceProvider services)
             => RenderIndex(options, services));
 
-        app.MapGet($"{options.RoutePrefix}/{{entity}}", (string entity, IServiceProvider services)
-            => RenderEntityList(options, entity, services));
+        app.MapGet($"{options.RoutePrefix}/{{entity}}", (string entity, HttpRequest request, IServiceProvider services)
+            => RenderEntityList(options, entity, request, services));
 
         app.MapGet($"{options.RoutePrefix}/{{entity}}/new", (string entity, IServiceProvider services)
             => RenderCreateForm(options, entity, services));
@@ -63,7 +63,7 @@ public static class EfUiApplicationBuilderExtensions
         return Results.Content(html, HtmlContentType);
     }
 
-    private static IResult RenderEntityList(EfUiOptions options, string entity, IServiceProvider services)
+    private static IResult RenderEntityList(EfUiOptions options, string entity, HttpRequest request, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
         var metadata = GetEntityMetadata(dbContext, entity);
@@ -72,11 +72,18 @@ public static class EfUiApplicationBuilderExtensions
             return Results.NotFound();
         }
 
+        var queryResult = BindTableQuery(request, metadata);
         var rows = ReadRows(dbContext, metadata.ClrType);
         var html = new HtmlPageRenderer().RenderList(
             options.RoutePrefix,
             metadata,
-            new RenderedListView(CreateRenderedListRows(dbContext, metadata, rows)));
+            new RenderedListView(
+                CreateRenderedListRows(dbContext, metadata, rows),
+                queryResult.Query.Filters.Select(filter => new RenderedListFilter(filter.Field, filter.Operator, filter.Value)).ToList(),
+                queryResult.Query.Sorts.Select(sort => new RenderedListSort(sort.Field, sort.Direction)).ToList(),
+                queryResult.Errors,
+                queryResult.Query.Offset,
+                queryResult.Query.Limit));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -216,6 +223,119 @@ public static class EfUiApplicationBuilderExtensions
 
     private static EntityMetadata? GetEntityMetadata(DbContext dbContext, string entity)
         => new EfEntityMetadataProvider().GetEntities(dbContext).SingleOrDefault(x => x.RouteName == entity);
+
+    private static BoundTableQuery BindTableQuery(HttpRequest request, EntityMetadata metadata)
+    {
+        var fields = metadata.AllProperties
+            .Select(property => new TableQueryField(property.Name, IsFilterable: true, IsSortable: true))
+            .ToDictionary(field => field.Name, StringComparer.Ordinal);
+
+        var filters = new List<TableFilterClause>();
+        var sorts = new List<TableSortClause>();
+        var errors = new List<string>();
+
+        foreach (var index in GetClauseIndexes(request.Query, "filter"))
+        {
+            var field = request.Query[$"filter.{index}.field"].FirstOrDefault();
+            var op = request.Query[$"filter.{index}.op"].FirstOrDefault();
+            var value = request.Query[$"filter.{index}.value"].FirstOrDefault();
+
+            if (string.IsNullOrWhiteSpace(field) && string.IsNullOrWhiteSpace(op) && string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(field) || !fields.TryGetValue(field, out var fieldDefinition) || !fieldDefinition.IsFilterable)
+            {
+                errors.Add($"Unsupported filter field '{field}'.");
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(op) || !fieldDefinition.SupportedOperators.Contains(op, StringComparer.OrdinalIgnoreCase))
+            {
+                errors.Add($"Unsupported filter operator '{op}' for field '{field}'.");
+                continue;
+            }
+
+            filters.Add(new TableFilterClause(field, op, value));
+        }
+
+        foreach (var index in GetClauseIndexes(request.Query, "sort"))
+        {
+            var field = request.Query[$"sort.{index}.field"].FirstOrDefault();
+            var direction = request.Query[$"sort.{index}.dir"].FirstOrDefault();
+
+            if (string.IsNullOrWhiteSpace(field) && string.IsNullOrWhiteSpace(direction))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(field) || !fields.TryGetValue(field, out var fieldDefinition) || !fieldDefinition.IsSortable)
+            {
+                errors.Add($"Unsupported sort field '{field}'.");
+                continue;
+            }
+
+            if (!string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(direction, "desc", StringComparison.OrdinalIgnoreCase))
+            {
+                errors.Add($"Unsupported sort direction '{direction}'.");
+                continue;
+            }
+
+            sorts.Add(new TableSortClause(field, direction));
+        }
+
+        return new BoundTableQuery(
+            new TableQuery(filters, sorts, ReadNonNegativeInt(request, "offset", 0, errors), ReadPositiveInt(request, "limit", 50, errors)),
+            errors);
+    }
+
+    private static IEnumerable<int> GetClauseIndexes(IQueryCollection query, string prefix)
+        => query.Keys
+            .Where(key => key.StartsWith(prefix + ".", StringComparison.OrdinalIgnoreCase))
+            .Select(key => key.Split('.', StringSplitOptions.RemoveEmptyEntries))
+            .Where(parts => parts.Length >= 3)
+            .Select(parts => int.TryParse(parts[1], out var index) ? index : -1)
+            .Where(index => index >= 0)
+            .Distinct()
+            .OrderBy(index => index);
+
+    private static int ReadNonNegativeInt(HttpRequest request, string key, int fallback, ICollection<string> errors)
+    {
+        var rawValue = request.Query[key].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            return fallback;
+        }
+
+        if (int.TryParse(rawValue, out var parsed) && parsed >= 0)
+        {
+            return parsed;
+        }
+
+        errors.Add($"Unsupported {key} value '{rawValue}'.");
+        return fallback;
+    }
+
+    private static int ReadPositiveInt(HttpRequest request, string key, int fallback, ICollection<string> errors)
+    {
+        var rawValue = request.Query[key].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            return fallback;
+        }
+
+        if (int.TryParse(rawValue, out var parsed) && parsed > 0)
+        {
+            return parsed;
+        }
+
+        errors.Add($"Unsupported {key} value '{rawValue}'.");
+        return fallback;
+    }
+
+    private sealed record BoundTableQuery(TableQuery Query, IReadOnlyList<string> Errors);
 
     private static IReadOnlyList<object> ReadRows(DbContext dbContext, Type entityClrType)
     {

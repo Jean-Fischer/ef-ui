@@ -72,7 +72,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
     private static void RenderQueryBuilder(StringBuilder html, RenderedListView view)
     {
-        html.Append("<section class=\"efui-query-builder\">");
+        html.Append($"<section class=\"efui-query-builder\" data-offset=\"{view.Offset}\" data-limit=\"{view.Limit}\">");
 
         if (view.Errors.Count > 0)
         {

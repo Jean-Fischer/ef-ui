@@ -122,6 +122,30 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Get_entity_page_renders_active_query_builder_state_from_url()
+    {
+        var html = await _client.GetStringAsync("/simple/users?filter.0.field=Name&filter.0.op=contains&filter.0.value=Ada&sort.0.field=Email&sort.0.dir=desc&offset=0&limit=25");
+
+        html.Should().Contain("class=\"efui-query-builder\"");
+        html.Should().Contain("Name contains Ada");
+        html.Should().Contain("Email desc");
+        html.Should().Contain("data-offset=\"0\"");
+        html.Should().Contain("data-limit=\"25\"");
+    }
+
+    [Fact]
+    public async Task Get_entity_page_surfaces_invalid_query_builder_rules_as_visible_errors()
+    {
+        var html = await _client.GetStringAsync("/simple/users?filter.0.field=DropTable&filter.0.op=contains&filter.0.value=Ada&sort.0.field=Email&sort.0.dir=sideways");
+
+        html.Should().Contain("class=\"efui-error-summary\"");
+        html.Should().Contain("Unsupported filter field");
+        html.Should().Contain("DropTable");
+        html.Should().Contain("Unsupported sort direction");
+        html.Should().Contain("sideways");
+    }
+
+    [Fact]
     public async Task Get_new_form_renders_only_editable_fields()
     {
         var html = await _client.GetStringAsync("/simple/users/new");
