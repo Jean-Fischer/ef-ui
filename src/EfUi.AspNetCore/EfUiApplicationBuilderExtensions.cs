@@ -3,6 +3,7 @@ using EfUi.Core.Binding;
 using EfUi.Core.Crud;
 using EfUi.Core.Metadata;
 using EfUi.Core.Rendering;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -31,38 +32,38 @@ public static class EfUiApplicationBuilderExtensions
 
     private static void MapEfUiRoutes(WebApplication app, EfUiOptions options)
     {
-        app.MapGet($"{options.RoutePrefix}/assets/efui.css", ()
-            => Results.Text(EfUiFormCss.Content, "text/css"));
+        RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/assets/efui.css", ()
+            => Results.Text(EfUiFormCss.Content, "text/css")), options);
 
-        app.MapGet($"{options.RoutePrefix}/assets/efui-table.css", ()
-            => Results.Text(EfUiTableAssets.StylesheetContent, "text/css"));
+        RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/assets/efui-table.css", ()
+            => Results.Text(EfUiTableAssets.StylesheetContent, "text/css")), options);
 
-        app.MapGet($"{options.RoutePrefix}/assets/efui-table.js", ()
-            => Results.Text(EfUiTableAssets.ScriptContent, "text/javascript"));
+        RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/assets/efui-table.js", ()
+            => Results.Text(EfUiTableAssets.ScriptContent, "text/javascript")), options);
 
-        app.MapGet(options.RoutePrefix, (IServiceProvider services)
-            => RenderIndex(options, services));
+        RequireBrowserAuthorization(app.MapGet(options.RoutePrefix, (IServiceProvider services)
+            => RenderIndex(options, services)), options);
 
-        app.MapGet($"{options.RoutePrefix}/{{entity}}", (string entity, HttpRequest request, IServiceProvider services)
-            => RenderEntityList(options, entity, request, services));
+        RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/{{entity}}", (string entity, HttpRequest request, IServiceProvider services)
+            => RenderEntityList(options, entity, request, services)), options);
 
-        app.MapGet($"{options.RoutePrefix}/{{entity}}/data", (string entity, HttpRequest request, IServiceProvider services)
-            => RenderEntityListData(options, entity, request, services));
+        RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/{{entity}}/data", (string entity, HttpRequest request, IServiceProvider services)
+            => RenderEntityListData(options, entity, request, services)), options);
 
-        app.MapGet($"{options.RoutePrefix}/{{entity}}/new", (string entity, IServiceProvider services)
-            => RenderCreateForm(options, entity, services));
+        RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/{{entity}}/new", (string entity, IServiceProvider services)
+            => RenderCreateForm(options, entity, services)), options);
 
-        app.MapGet($"{options.RoutePrefix}/{{entity}}/{{id}}/edit", (string entity, string id, IServiceProvider services)
-            => RenderEditFormAsync(options, entity, id, services));
+        RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/{{entity}}/{{id}}/edit", (string entity, string id, IServiceProvider services)
+            => RenderEditFormAsync(options, entity, id, services)), options);
 
-        app.MapPost($"{options.RoutePrefix}/{{entity}}", (string entity, HttpRequest request, IServiceProvider services)
-            => CreateEntityAsync(options, entity, request, services));
+        RequireEditAuthorization(app.MapPost($"{options.RoutePrefix}/{{entity}}", (string entity, HttpRequest request, IServiceProvider services)
+            => CreateEntityAsync(options, entity, request, services)), options);
 
-        app.MapPost($"{options.RoutePrefix}/{{entity}}/{{id}}", (string entity, string id, HttpRequest request, IServiceProvider services)
-            => UpdateEntityAsync(options, entity, id, request, services));
+        RequireEditAuthorization(app.MapPost($"{options.RoutePrefix}/{{entity}}/{{id}}", (string entity, string id, HttpRequest request, IServiceProvider services)
+            => UpdateEntityAsync(options, entity, id, request, services)), options);
 
-        app.MapPost($"{options.RoutePrefix}/{{entity}}/{{id}}/delete", (string entity, string id, IServiceProvider services)
-            => DeleteEntityAsync(options, entity, id, services));
+        RequireEditAuthorization(app.MapPost($"{options.RoutePrefix}/{{entity}}/{{id}}/delete", (string entity, string id, IServiceProvider services)
+            => DeleteEntityAsync(options, entity, id, services)), options);
     }
 
     private static IResult RenderIndex(EfUiOptions options, IServiceProvider services)
@@ -238,6 +239,32 @@ public static class EfUiApplicationBuilderExtensions
             metadata,
             new RenderedListView(CreateRenderedListRows(options.RoutePrefix, metadata, rows, relatedValueLookups)));
         return Results.Content(html, HtmlContentType);
+    }
+
+    private static RouteHandlerBuilder RequireBrowserAuthorization(RouteHandlerBuilder builder, EfUiOptions options)
+    {
+        if (!options.RequireAuthorization)
+        {
+            return builder;
+        }
+
+        return builder.RequireAuthorization(new AuthorizeAttribute
+        {
+            Roles = string.Join(',', new[] { options.ReadOnlyRoleName, options.EditRoleName }.Where(role => !string.IsNullOrWhiteSpace(role)))
+        });
+    }
+
+    private static RouteHandlerBuilder RequireEditAuthorization(RouteHandlerBuilder builder, EfUiOptions options)
+    {
+        if (!options.RequireAuthorization)
+        {
+            return builder;
+        }
+
+        return builder.RequireAuthorization(new AuthorizeAttribute
+        {
+            Roles = options.EditRoleName
+        });
     }
 
     private static DbContext ResolveDbContext(IServiceProvider services, Type dbContextType)

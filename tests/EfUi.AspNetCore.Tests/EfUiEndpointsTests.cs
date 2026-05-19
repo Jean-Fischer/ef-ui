@@ -39,6 +39,17 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Get_root_exposes_sample_auth_switch_buttons()
+    {
+        var html = await _client.GetStringAsync("/");
+
+        html.Should().Contain("/auth/anonymous");
+        html.Should().Contain("/auth/readonly");
+        html.Should().Contain("/auth/edit");
+        html.Should().Contain("Current profile:");
+    }
+
+    [Fact]
     public async Task Get_index_returns_entity_links_with_themed_shell_and_breadcrumbs()
     {
         var html = await _client.GetStringAsync("/simple");

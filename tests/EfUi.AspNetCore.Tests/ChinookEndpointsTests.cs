@@ -9,14 +9,61 @@ namespace EfUi.AspNetCore.Tests;
 
 public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory>
 {
+    private readonly EfUiApplicationFactory _factory;
     private readonly HttpClient _client;
 
     public ChinookEndpointsTests(EfUiApplicationFactory factory)
     {
-        _client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        _factory = factory;
+        _client = CreateClient();
+        AuthenticateAsync(_client, "Edit").GetAwaiter().GetResult();
+    }
+
+    [Fact]
+    public async Task Anonymous_user_receives_401_for_the_chinook_mount()
+    {
+        using var client = CreateClient();
+
+        var response = await client.GetAsync("/chinook");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task ReadOnly_user_can_browse_but_cannot_mutate_the_chinook_mount()
+    {
+        using var client = CreateClient();
+        await AuthenticateAsync(client, "ReadOnly");
+
+        var browseResponse = await client.GetAsync("/chinook");
+        browseResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var mutationResponse = await client.PostAsync(
+            "/chinook/genres/1",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["Name"] = "ReadOnly Update"
+            }));
+
+        mutationResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    private HttpClient CreateClient()
+        => _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false
         });
+
+    private static async Task AuthenticateAsync(HttpClient client, string role)
+    {
+        var endpoint = role.Equals("Edit", StringComparison.OrdinalIgnoreCase)
+            ? "/auth/edit"
+            : "/auth/readonly";
+
+        var response = await client.PostAsync(endpoint, new FormUrlEncodedContent(Array.Empty<KeyValuePair<string, string>>()));
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
+        response.Headers.Location.Should().NotBeNull();
+        response.Headers.Location!.ToString().Should().Be("/");
     }
 
     [Fact]
