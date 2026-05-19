@@ -22,12 +22,15 @@ Form behavior:
 - join entities with payload are managed through related-row links instead of inline nested editors
 
 List behavior:
-- list pages render a visible query-builder bar above the table
+- every page includes breadcrumb navigation so you can move back to EF UI home, the current mount, and the current entity list
 - list state is URL-driven using `filter.N.field`, `filter.N.op`, `filter.N.value`, `sort.N.field`, `sort.N.dir`, `offset`, and `limit`
-- filtering and sorting are executed on the server
+- Tabulator header sorting and header filters own the visible list interactions
+- the server owns filtering and sorting semantics and renders the authoritative result set for each URL
+- list pages show a compact table status strip for active filters, active sorts, and query validation errors
 - FK display cells can render as links to the related row edit page
 - related-row links can open child tables with a visible pre-applied filter in the URL
-- list pages include a progressive Tabulator enhancement shell, while keeping the server-rendered HTML table as fallback
+- list pages keep a server-rendered HTML table as fallback if the Tabulator enhancement is unavailable
+- the enhanced grid shows loading feedback in the grid area while it navigates to the next server-rendered URL
 
 To verify the sample host in production mode:
 

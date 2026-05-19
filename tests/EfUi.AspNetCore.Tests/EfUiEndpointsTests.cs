@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -176,6 +177,21 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Get_edit_form_renders_breadcrumb_navigation_back_to_list_and_mount()
+    {
+        var email = $"edit-breadcrumb-{Guid.NewGuid():N}@example.com";
+        var id = await CreateUserAndGetIdAsync("Breadcrumb User", email);
+
+        var html = await _client.GetStringAsync($"/simple/users/{id}/edit");
+
+        html.Should().Contain("<nav class=\"efui-breadcrumbs\" aria-label=\"Breadcrumb\">");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/\">EF UI</a>");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/simple\">Simple</a>");
+        html.Should().Contain($"<a class=\"efui-breadcrumb-link\" href=\"/simple/users\">User</a>");
+        html.Should().Contain("<span class=\"efui-breadcrumb-current\">Edit</span>");
+    }
+
+    [Fact]
     public async Task Get_entity_page_renders_active_query_state_from_url_in_compact_status_area()
     {
         var html = await _client.GetStringAsync("/simple/users?filter.0.field=Name&filter.0.op=contains&filter.0.value=Ada&sort.0.field=Email&sort.0.dir=desc&offset=0&limit=25");
@@ -225,6 +241,20 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var activeSort = root.GetProperty("query").GetProperty("sorts").EnumerateArray().Single();
         activeSort.GetProperty("Field").GetString().Should().Be("Email");
         activeSort.GetProperty("Direction").GetString().Should().Be("desc");
+    }
+
+    [Fact]
+    public void Readme_describes_simple_and_chinook_breadcrumb_and_column_filter_list_behavior()
+    {
+        var readmePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../README.md"));
+        var readme = File.ReadAllText(readmePath);
+
+        readme.Should().Contain("breadcrumb navigation");
+        readme.Should().Contain("Tabulator header sorting and header filters");
+        readme.Should().Contain("server owns filtering and sorting semantics");
+        readme.Should().Contain("compact table status strip");
+        readme.Should().Contain("server-rendered HTML table as fallback");
+        readme.Should().Contain("loading feedback in the grid area");
     }
 
     [Fact]

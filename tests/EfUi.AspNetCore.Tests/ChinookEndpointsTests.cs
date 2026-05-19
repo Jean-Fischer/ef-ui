@@ -154,6 +154,17 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         html.Should().Contain("InvoiceId eq 1");
         html.Should().Contain("class=\"efui-table-status\"");
         html.Should().NotContain("class=\"efui-query-builder\"");
+
+        using var config = GetTableConfig(html);
+        var root = config.RootElement;
+        root.GetProperty("listUrl").GetString().Should().Be("/chinook/invoice_items");
+
+        var invoiceIdColumn = GetColumn(root, "InvoiceId");
+        invoiceIdColumn.GetProperty("headerSort").GetBoolean().Should().BeTrue();
+        invoiceIdColumn.GetProperty("headerFilter").GetString().Should().Be("input");
+        invoiceIdColumn.GetProperty("filterOperator").GetString().Should().Be("contains");
+        invoiceIdColumn.GetProperty("activeFilterOperator").GetString().Should().Be("eq");
+        invoiceIdColumn.GetProperty("headerFilterValue").GetString().Should().Be("1");
     }
 
     [Fact]
