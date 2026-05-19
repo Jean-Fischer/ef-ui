@@ -5,7 +5,7 @@ namespace EfUi.Core.Rendering;
 
 public static class RenderedListPayloadFactory
 {
-    public static object Create(string routePrefix, EntityMetadata entity, RenderedListView view)
+    public static object Create(string routePrefix, EntityMetadata entity, RenderedListView view, bool showActions = true)
     {
         var activeFilters = view.Filters
             .GroupBy(filter => filter.Field, StringComparer.Ordinal)
@@ -14,57 +14,63 @@ public static class RenderedListPayloadFactory
             .GroupBy(sort => sort.Field, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
 
+        var columns = entity.AllProperties
+            .Select(property =>
+            {
+                activeFilters.TryGetValue(property.Name, out var activeFilter);
+                activeSorts.TryGetValue(property.Name, out var activeSort);
+                return new
+                {
+                    field = property.Name,
+                    title = property.Name,
+                    headerSort = true,
+                    headerFilter = (object)"input",
+                    headerFilterLiveFilter = false,
+                    filterOperator = (string?)(activeFilter?.Operator ?? GetDefaultFilterOperator(property)),
+                    activeFilterOperator = activeFilter?.Operator,
+                    headerFilterValue = activeFilter?.Value,
+                    sortDirection = activeSort?.Direction,
+                    isFilterable = true,
+                    relatedDisplayPropertyName = property.RelatedDisplayPropertyName
+                };
+            })
+            .ToList();
+
+        if (showActions)
+        {
+            columns.Add(new
+            {
+                field = "__actions",
+                title = "Actions",
+                headerSort = false,
+                headerFilter = (object)false,
+                headerFilterLiveFilter = false,
+                filterOperator = (string?)null,
+                activeFilterOperator = (string?)null,
+                headerFilterValue = (string?)null,
+                sortDirection = (string?)null,
+                isFilterable = false,
+                relatedDisplayPropertyName = (string?)null
+            });
+        }
+
         return new
         {
             library = "tabulator",
             entity = entity.RouteName,
             listUrl = $"{routePrefix}/{entity.RouteName}",
             dataUrl = $"{routePrefix}/{entity.RouteName}/data",
-            columns = entity.AllProperties
-                .Select(property =>
-                {
-                    activeFilters.TryGetValue(property.Name, out var activeFilter);
-                    activeSorts.TryGetValue(property.Name, out var activeSort);
-                    return new
-                    {
-                        field = property.Name,
-                        title = property.Name,
-                        headerSort = true,
-                        headerFilter = (object)"input",
-                        headerFilterLiveFilter = false,
-                        filterOperator = (string?)(activeFilter?.Operator ?? GetDefaultFilterOperator(property)),
-                        activeFilterOperator = activeFilter?.Operator,
-                        headerFilterValue = activeFilter?.Value,
-                        sortDirection = activeSort?.Direction,
-                        isFilterable = true,
-                        relatedDisplayPropertyName = property.RelatedDisplayPropertyName
-                    };
-                })
-                .Concat(new[]
-                {
-                    new
-                    {
-                        field = "__actions",
-                        title = "Actions",
-                        headerSort = false,
-                        headerFilter = (object)false,
-                        headerFilterLiveFilter = false,
-                        filterOperator = (string?)null,
-                        activeFilterOperator = (string?)null,
-                        headerFilterValue = (string?)null,
-                        sortDirection = (string?)null,
-                        isFilterable = false,
-                        relatedDisplayPropertyName = (string?)null
-                    }
-                })
-                .ToList(),
+            columns,
             rows = view.Rows.Select(row =>
             {
                 var values = row.Cells.ToDictionary(
                     cell => cell.Key,
                     cell => (object?)new { text = cell.Value.Text, href = cell.Value.Href },
                     StringComparer.Ordinal);
-                values["__actions"] = BuildRowActionsMarkup(routePrefix, entity, row.Key);
+                if (showActions)
+                {
+                    values["__actions"] = BuildRowActionsMarkup(routePrefix, entity, row.Key);
+                }
                 return values;
             }).ToList(),
             query = new
@@ -88,8 +94,8 @@ public static class RenderedListPayloadFactory
         };
     }
 
-    public static string Serialize(string routePrefix, EntityMetadata entity, RenderedListView view)
-        => JsonSerializer.Serialize(Create(routePrefix, entity, view))
+    public static string Serialize(string routePrefix, EntityMetadata entity, RenderedListView view, bool showActions = true)
+        => JsonSerializer.Serialize(Create(routePrefix, entity, view, showActions))
             .Replace("</script", "<\\/script", StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyList<string> BuildStatusItems(RenderedListView view)

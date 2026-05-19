@@ -48,6 +48,26 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         mutationResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    [Fact]
+    public async Task ReadOnly_user_does_not_see_mutation_controls_on_chinook_lists()
+    {
+        using var client = CreateClient();
+        await AuthenticateAsync(client, "ReadOnly");
+
+        var html = await client.GetStringAsync("/chinook/albums");
+
+        html.Should().NotContain("<a class=\"efui-primary-link\" href=\"/chinook/albums/new\">Create New</a>");
+        html.Should().NotContain("class=\"efui-row-actions\"");
+        html.Should().NotContain("class=\"efui-row-action-link\"");
+        html.Should().NotContain("class=\"efui-row-action-button\"");
+        html.Should().NotContain("<th>Actions</th>");
+        html.Should().NotContain("\"field\":\"__actions\"");
+
+        using var payload = JsonDocument.Parse(await client.GetStringAsync("/chinook/albums/data"));
+        payload.RootElement.GetProperty("columns").EnumerateArray().Any(column => string.Equals(column.GetProperty("field").GetString(), "__actions", StringComparison.Ordinal)).Should().BeFalse();
+        payload.RootElement.GetProperty("rows").EnumerateArray().Any(row => row.TryGetProperty("__actions", out _)).Should().BeFalse();
+    }
+
     private HttpClient CreateClient()
         => _factory.CreateClient(new WebApplicationFactoryClientOptions
         {

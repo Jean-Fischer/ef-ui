@@ -31,7 +31,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         return html.ToString();
     }
 
-    public string RenderList(string routePrefix, EntityMetadata entity, RenderedListView view)
+    public string RenderList(string routePrefix, EntityMetadata entity, RenderedListView view, bool showActions = true)
     {
         var html = new StringBuilder();
         AppendDocumentStart(html, routePrefix, "efui-page", BuildTableEnhancementHead(routePrefix));
@@ -42,11 +42,14 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         ]);
         html.Append("<section class=\"efui-surface\">");
         html.Append($"<h1>{WebUtility.HtmlEncode(entity.DisplayName)}</h1>");
-        html.Append("<div class=\"efui-page-actions\">");
-        html.Append($"<a class=\"efui-primary-link\" href=\"{routePrefix}/{entity.RouteName}/new\">Create New</a>");
-        AppendClosingDivTag(html);
+        if (showActions)
+        {
+            html.Append("<div class=\"efui-page-actions\">");
+            html.Append($"<a class=\"efui-primary-link\" href=\"{routePrefix}/{entity.RouteName}/new\">Create New</a>");
+            AppendClosingDivTag(html);
+        }
         RenderTableStatus(html, view);
-        RenderTableEnhancementShell(html, routePrefix, entity, view);
+        RenderTableEnhancementShell(html, routePrefix, entity, view, showActions);
         html.Append("<div class=\"efui-table-wrapper\" data-role=\"efui-table-fallback\">");
         html.Append("<table class=\"efui-table\"><thead><tr>");
 
@@ -55,7 +58,12 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             html.Append($"<th>{WebUtility.HtmlEncode(property.Name)}</th>");
         }
 
-        html.Append("<th>Actions</th></tr></thead><tbody>");
+        if (showActions)
+        {
+            html.Append("<th>Actions</th>");
+        }
+
+        html.Append("</tr></thead><tbody>");
 
         foreach (var row in view.Rows)
         {
@@ -69,9 +77,14 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
                 html.Append("</td>");
             }
 
-            html.Append("<td class=\"efui-row-actions\">");
-            html.Append(BuildRowActionsMarkup(routePrefix, entity, row.Key));
-            html.Append("</td></tr>");
+            if (showActions)
+            {
+                html.Append("<td class=\"efui-row-actions\">");
+                html.Append(BuildRowActionsMarkup(routePrefix, entity, row.Key));
+                html.Append("</td>");
+            }
+
+            html.Append("</tr>");
         }
 
         html.Append("</tbody></table></div></section></main></body></html>");
@@ -188,12 +201,12 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     private static string BuildTableEnhancementHead(string routePrefix)
         => $"<link rel=\"stylesheet\" href=\"https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css\" /><link rel=\"stylesheet\" href=\"{routePrefix}/assets/efui-table.css\" /><script src=\"https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js\"></script><script defer src=\"{routePrefix}/assets/efui-table.js\"></script>";
 
-    private static void RenderTableEnhancementShell(StringBuilder html, string routePrefix, EntityMetadata entity, RenderedListView view)
+    private static void RenderTableEnhancementShell(StringBuilder html, string routePrefix, EntityMetadata entity, RenderedListView view, bool showActions)
     {
         html.Append("<section class=\"efui-table-enhancement\" data-role=\"efui-table-enhancement\">");
         html.Append("<div class=\"efui-table-host\" data-role=\"efui-table-host\"></div>");
         html.Append("<script type=\"application/json\" data-role=\"efui-table-config\">");
-        html.Append(RenderedListPayloadFactory.Serialize(routePrefix, entity, view));
+        html.Append(RenderedListPayloadFactory.Serialize(routePrefix, entity, view, showActions));
         html.Append("</script></section>");
     }
 

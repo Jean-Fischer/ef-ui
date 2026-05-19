@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using EfUi.Core.Binding;
 using EfUi.Core.Crud;
@@ -50,11 +51,11 @@ public static class EfUiApplicationBuilderExtensions
         RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/{{entity}}/data", (string entity, HttpRequest request, IServiceProvider services)
             => RenderEntityListData(options, entity, request, services)), options);
 
-        RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/{{entity}}/new", (string entity, IServiceProvider services)
-            => RenderCreateForm(options, entity, services)), options);
+        RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/{{entity}}/new", (string entity, HttpContext httpContext, IServiceProvider services)
+            => RenderCreateForm(options, entity, httpContext, services)), options);
 
-        RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/{{entity}}/{{id}}/edit", (string entity, string id, IServiceProvider services)
-            => RenderEditFormAsync(options, entity, id, services)), options);
+        RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/{{entity}}/{{id}}/edit", (string entity, string id, HttpContext httpContext, IServiceProvider services)
+            => RenderEditFormAsync(options, entity, id, httpContext, services)), options);
 
         RequireEditAuthorization(app.MapPost($"{options.RoutePrefix}/{{entity}}", (string entity, HttpRequest request, IServiceProvider services)
             => CreateEntityAsync(options, entity, request, services)), options);
@@ -89,7 +90,7 @@ public static class EfUiApplicationBuilderExtensions
         }
 
         var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request, GetRenderableIssueMessages(discovery, entity));
-        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, view);
+        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, view, CanMutate(options, request.HttpContext.User));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -104,10 +105,10 @@ public static class EfUiApplicationBuilderExtensions
         }
 
         var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request, GetRenderableIssueMessages(discovery, entity));
-        return Results.Text(JsonSerializer.Serialize(RenderedListPayloadFactory.Create(options.RoutePrefix, metadata, view)), "application/json");
+        return Results.Text(JsonSerializer.Serialize(RenderedListPayloadFactory.Create(options.RoutePrefix, metadata, view, CanMutate(options, request.HttpContext.User))), "application/json");
     }
 
-    private static IResult RenderCreateForm(EfUiOptions options, string entity, IServiceProvider services)
+    private static IResult RenderCreateForm(EfUiOptions options, string entity, HttpContext httpContext, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
         var discovery = DiscoverEntities(dbContext);
@@ -128,7 +129,7 @@ public static class EfUiApplicationBuilderExtensions
         return Results.Content(html, HtmlContentType);
     }
 
-    private static async Task<IResult> RenderEditFormAsync(EfUiOptions options, string entity, string id, IServiceProvider services)
+    private static async Task<IResult> RenderEditFormAsync(EfUiOptions options, string entity, string id, HttpContext httpContext, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
         var discovery = DiscoverEntities(dbContext);
@@ -266,6 +267,9 @@ public static class EfUiApplicationBuilderExtensions
             Roles = options.EditRoleName
         });
     }
+
+    private static bool CanMutate(EfUiOptions options, ClaimsPrincipal user)
+        => !options.RequireAuthorization || user.IsInRole(options.EditRoleName);
 
     private static DbContext ResolveDbContext(IServiceProvider services, Type dbContextType)
         => (DbContext)services.GetRequiredService(dbContextType);
