@@ -114,9 +114,21 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function getFilterOperator(field) {
+    function getFilterOperator(field, value) {
       var column = columnMap[field] || {};
-      return column.activeFilterOperator || column.filterOperator || 'contains';
+      var defaultOperator = column.filterOperator || 'contains';
+      var activeOperator = column.activeFilterOperator;
+      var initialValue = column.headerFilterValue;
+
+      if (!activeOperator) {
+        return defaultOperator;
+      }
+
+      if (isBlankFilterValue(value) || String(value) !== String(initialValue || '')) {
+        return defaultOperator;
+      }
+
+      return activeOperator;
     }
 
     function applyFilterQuery(params, filters) {
@@ -127,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .forEach(function (filter, filterIndex) {
           params.set('filter.' + filterIndex + '.field', filter.field);
-          params.set('filter.' + filterIndex + '.op', getFilterOperator(filter.field));
+          params.set('filter.' + filterIndex + '.op', getFilterOperator(filter.field, filter.value));
           params.set('filter.' + filterIndex + '.value', String(filter.value));
         });
     }

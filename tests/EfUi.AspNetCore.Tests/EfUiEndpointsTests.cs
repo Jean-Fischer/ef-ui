@@ -97,6 +97,9 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().Contain("params.set('filter.' + filterIndex + '.field'");
         script.Should().Contain("params.set('filter.' + filterIndex + '.op'");
         script.Should().Contain("params.set('filter.' + filterIndex + '.value'");
+        script.Should().Contain("getFilterOperator(field, value)");
+        script.Should().Contain("column.activeFilterOperator");
+        script.Should().Contain("column.headerFilterValue");
         script.Should().Contain("params.set('sort.' + sortIndex + '.field'");
         script.Should().Contain("params.set('sort.' + sortIndex + '.dir'");
         script.Should().Contain("filterIndex");
