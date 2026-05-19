@@ -63,6 +63,17 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Get_table_enhancement_assets_expose_tabulator_bootstrap_shell()
+    {
+        var script = await _client.GetStringAsync("/simple/assets/efui-table.js");
+        var css = await _client.GetStringAsync("/simple/assets/efui-table.css");
+
+        script.Should().Contain("Tabulator");
+        script.Should().Contain("efui-table-config");
+        css.Should().Contain(".efui-table-enhancement");
+    }
+
+    [Fact]
     public async Task Get_entity_page_renders_themed_table_with_related_labels_and_fk_links()
     {
         var adminsEmail = $"related-label-admins-{Guid.NewGuid():N}@example.com";
@@ -81,7 +92,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("<section class=\"efui-surface\">");
         html.Should().Contain("<div class=\"efui-page-actions\">");
         html.Should().Contain("<a class=\"efui-primary-link\" href=\"/simple/users/new\">Create New</a>");
-        html.Should().Contain("<div class=\"efui-table-wrapper\">");
+        html.Should().Contain("<div class=\"efui-table-wrapper\" data-role=\"efui-table-fallback\">");
         html.Should().Contain("<table class=\"efui-table\">");
         html.Should().Contain("class=\"efui-row-actions\"");
         html.Should().Contain("class=\"efui-row-action-link\"");
@@ -133,6 +144,12 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("Email desc");
         html.Should().Contain("data-offset=\"0\"");
         html.Should().Contain("data-limit=\"25\"");
+        html.Should().Contain("href=\"/simple/assets/efui-table.css\"");
+        html.Should().Contain("src=\"/simple/assets/efui-table.js\"");
+        html.Should().Contain("data-role=\"efui-table-enhancement\"");
+        html.Should().Contain("data-role=\"efui-table-config\"");
+        html.Should().Contain("data-role=\"efui-table-fallback\"");
+        html.Should().Contain("\"library\":\"tabulator\"");
     }
 
     [Fact]

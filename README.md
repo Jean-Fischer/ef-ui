@@ -21,6 +21,14 @@ Form behavior:
 - supported one-to-many relationships render on edit forms as a filterable checkbox picker, with rows already assigned elsewhere shown disabled
 - join entities with payload are managed through related-row links instead of inline nested editors
 
+List behavior:
+- list pages render a visible query-builder bar above the table
+- list state is URL-driven using `filter.N.field`, `filter.N.op`, `filter.N.value`, `sort.N.field`, `sort.N.dir`, `offset`, and `limit`
+- filtering and sorting are executed on the server
+- FK display cells can render as links to the related row edit page
+- related-row links can open child tables with a visible pre-applied filter in the URL
+- list pages include a progressive Tabulator enhancement shell, while keeping the server-rendered HTML table as fallback
+
 To verify the sample host in production mode:
 
 ```powershell

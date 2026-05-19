@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using EfUi.Core.Metadata;
 
 namespace EfUi.Core.Rendering;
@@ -26,14 +27,15 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     public string RenderList(string routePrefix, EntityMetadata entity, RenderedListView view)
     {
         var html = new StringBuilder();
-        AppendDocumentStart(html, routePrefix, "efui-page");
+        AppendDocumentStart(html, routePrefix, "efui-page", BuildTableEnhancementHead(routePrefix));
         html.Append("<section class=\"efui-surface\">");
         html.Append($"<h1>{WebUtility.HtmlEncode(entity.DisplayName)}</h1>");
         html.Append("<div class=\"efui-page-actions\">");
         html.Append($"<a class=\"efui-primary-link\" href=\"{routePrefix}/{entity.RouteName}/new\">Create New</a>");
         html.Append("</div>");
         RenderQueryBuilder(html, view);
-        html.Append("<div class=\"efui-table-wrapper\">");
+        RenderTableEnhancementShell(html, entity, view);
+        html.Append("<div class=\"efui-table-wrapper\" data-role=\"efui-table-fallback\">");
         html.Append("<table class=\"efui-table\"><thead><tr>");
 
         foreach (var property in entity.AllProperties)
@@ -125,6 +127,40 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         }
 
         html.Append(text);
+    }
+
+    private static string BuildTableEnhancementHead(string routePrefix)
+        => $"<link rel=\"stylesheet\" href=\"https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css\" /><link rel=\"stylesheet\" href=\"{routePrefix}/assets/efui-table.css\" /><script src=\"https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js\"></script><script defer src=\"{routePrefix}/assets/efui-table.js\"></script>";
+
+    private static void RenderTableEnhancementShell(StringBuilder html, EntityMetadata entity, RenderedListView view)
+    {
+        html.Append("<section class=\"efui-table-enhancement\" data-role=\"efui-table-enhancement\">");
+        html.Append("<div class=\"efui-table-host\" data-role=\"efui-table-host\"></div>");
+        html.Append("<script type=\"application/json\" data-role=\"efui-table-config\">");
+        html.Append(BuildTableEnhancementConfig(entity, view));
+        html.Append("</script></section>");
+    }
+
+    private static string BuildTableEnhancementConfig(EntityMetadata entity, RenderedListView view)
+    {
+        var payload = new
+        {
+            library = "tabulator",
+            entity = entity.RouteName,
+            columns = entity.AllProperties.Select(property => new { field = property.Name, title = property.Name }).ToList(),
+            rows = view.Rows.Select(row => row.Cells.ToDictionary(
+                cell => cell.Key,
+                cell => new { text = cell.Value.Text, href = cell.Value.Href })).ToList(),
+            query = new
+            {
+                filters = view.Filters,
+                sorts = view.Sorts,
+                offset = view.Offset,
+                limit = view.Limit
+            }
+        };
+
+        return JsonSerializer.Serialize(payload).Replace("</script", "<\\/script", StringComparison.OrdinalIgnoreCase);
     }
 
     public string RenderEditForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, object? key, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
@@ -317,12 +353,17 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append("</script>");
     }
 
-    private static void AppendDocumentStart(StringBuilder html, string routePrefix, string mainClass)
+    private static void AppendDocumentStart(StringBuilder html, string routePrefix, string mainClass, string? extraHead = null)
     {
         html.Append("<html><head>");
         html.Append("<meta charset=\"utf-8\" />");
         html.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />");
         html.Append($"<link rel=\"stylesheet\" href=\"{routePrefix}/assets/efui.css\" />");
+        if (!string.IsNullOrWhiteSpace(extraHead))
+        {
+            html.Append(extraHead);
+        }
+
         html.Append($"</head><body class=\"efui-body\"><main class=\"{mainClass}\">");
     }
 

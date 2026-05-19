@@ -33,6 +33,12 @@ public static class EfUiApplicationBuilderExtensions
         app.MapGet($"{options.RoutePrefix}/assets/efui.css", ()
             => Results.Text(EfUiFormCss.Content, "text/css"));
 
+        app.MapGet($"{options.RoutePrefix}/assets/efui-table.css", ()
+            => Results.Text(EfUiTableAssets.StylesheetContent, "text/css"));
+
+        app.MapGet($"{options.RoutePrefix}/assets/efui-table.js", ()
+            => Results.Text(EfUiTableAssets.ScriptContent, "text/javascript"));
+
         app.MapGet(options.RoutePrefix, (IServiceProvider services)
             => RenderIndex(options, services));
 

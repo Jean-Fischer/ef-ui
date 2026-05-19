@@ -46,7 +46,7 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
 
         html.Should().Contain("<div class=\"efui-page-actions\">");
         html.Should().Contain("<a class=\"efui-primary-link\" href=\"/chinook/albums/new\">Create New</a>");
-        html.Should().Contain("<div class=\"efui-table-wrapper\">");
+        html.Should().Contain("<div class=\"efui-table-wrapper\" data-role=\"efui-table-fallback\">");
         html.Should().Contain("<table class=\"efui-table\">");
         html.Should().Contain("class=\"efui-row-actions\"");
         html.Should().Contain("class=\"efui-row-action-link\"");

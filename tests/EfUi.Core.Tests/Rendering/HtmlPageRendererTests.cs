@@ -89,7 +89,7 @@ public class HtmlPageRendererTests
         html.Should().Contain("class=\"efui-query-builder-sort\"");
         html.Should().Contain("Name contains Ada");
         html.Should().Contain("Name asc");
-        html.Should().Contain("<div class=\"efui-table-wrapper\">");
+        html.Should().Contain("<div class=\"efui-table-wrapper\" data-role=\"efui-table-fallback\">");
         html.Should().Contain("<table class=\"efui-table\">");
         html.Should().Contain("<td class=\"efui-row-actions\">");
         html.Should().Contain("<a class=\"efui-row-action-link\" href=\"/efui/users/7/edit\">Edit</a>");

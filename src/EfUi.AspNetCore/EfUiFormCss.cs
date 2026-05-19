@@ -84,6 +84,53 @@ internal static class EfUiFormCss
   margin-bottom: 1rem;
 }
 
+.efui-query-builder {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+}
+
+.efui-query-builder-group {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.efui-query-builder-group h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.efui-query-builder-filter,
+.efui-query-builder-sort,
+.efui-query-builder-empty {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.625rem;
+  background: #ffffff;
+}
+
+.efui-table-enhancement {
+  margin-bottom: 1rem;
+}
+
+.efui-table-host {
+  min-height: 2rem;
+}
+
+.efui-cell-link {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.efui-cell-link:hover {
+  text-decoration: underline;
+}
+
 .efui-primary-link {
   display: inline-flex;
   align-items: center;
