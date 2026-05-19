@@ -178,8 +178,13 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         nameColumn.GetProperty("headerFilter").GetString().Should().Be("input");
         nameColumn.GetProperty("filterOperator").GetString().Should().Be("contains");
         nameColumn.GetProperty("headerFilterValue").GetString().Should().Be("Ada");
+        nameColumn.GetProperty("sortDirection").ValueKind.Should().Be(JsonValueKind.Null);
+
+        var emailColumn = GetColumn(root, "Email");
+        emailColumn.GetProperty("sortDirection").GetString().Should().Be("desc");
 
         var actionsColumn = GetColumn(root, "__actions");
+        actionsColumn.GetProperty("sortDirection").ValueKind.Should().Be(JsonValueKind.Null);
         actionsColumn.GetProperty("headerSort").GetBoolean().Should().BeFalse();
         actionsColumn.GetProperty("headerFilter").ValueKind.Should().Be(JsonValueKind.False);
         actionsColumn.GetProperty("filterOperator").ValueKind.Should().Be(JsonValueKind.Null);
