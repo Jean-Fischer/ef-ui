@@ -276,12 +276,13 @@ If implementation remains simple, a later `-Strict` switch may cause the script 
 
 A future Pi agent should be able to:
 
-1. run the script
+1. run the script at the end of a feature
 2. read `%LOCALAPPDATA%\pi\ef-ui\sonar\summary.md` or `summary.json`
 3. answer:
    - whether quality checks passed
    - which files and lines are problematic
    - whether security issues exist
+   - whether any new `HIGH`/`CRITICAL` impact findings were introduced
    - what should be fixed before claiming completion
 
 This means the file output is the integration contract, not terminal logs alone.

@@ -77,6 +77,8 @@ dotnet test EfUi.sln
 
 ## Sonar scan
 
+At the end of each feature, run a Sonar scan and review the generated report before calling the work done.
+
 From the repository root, with `dotnet`, the global `dotnet-sonarscanner` tool, and `EF_UI_SONAR_TOKEN` available in your shell, run either:
 
 ```bash
@@ -92,6 +94,8 @@ mise run sonar
 If `mise` reports that `mise.toml` is not trusted yet, run `mise trust mise.toml` once from the repo root.
 
 The script reports Sonar quality results and writes local artifacts so humans and Pi agents can inspect findings, even when the quality gate is red.
+
+For feature completion, treat any new or introduced `HIGH`/`CRITICAL` impact finding or any `SECURITY` finding as a blocker until it is understood and resolved.
 
 Artifacts are written to `%LOCALAPPDATA%\pi\ef-ui\sonar\`:
 - `summary.md`
