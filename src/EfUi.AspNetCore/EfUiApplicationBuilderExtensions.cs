@@ -1,3 +1,4 @@
+using System.Text.Json;
 using EfUi.Core.Binding;
 using EfUi.Core.Crud;
 using EfUi.Core.Metadata;
@@ -45,6 +46,9 @@ public static class EfUiApplicationBuilderExtensions
         app.MapGet($"{options.RoutePrefix}/{{entity}}", (string entity, HttpRequest request, IServiceProvider services)
             => RenderEntityList(options, entity, request, services));
 
+        app.MapGet($"{options.RoutePrefix}/{{entity}}/data", (string entity, HttpRequest request, IServiceProvider services)
+            => RenderEntityListData(options, entity, request, services));
+
         app.MapGet($"{options.RoutePrefix}/{{entity}}/new", (string entity, IServiceProvider services)
             => RenderCreateForm(options, entity, services));
 
@@ -78,20 +82,22 @@ public static class EfUiApplicationBuilderExtensions
             return Results.NotFound();
         }
 
-        var queryResult = BindTableQuery(request, metadata);
-        var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata);
-        var rows = ApplyTableQuery(ReadRows(dbContext, metadata.ClrType), metadata, queryResult.Query, relatedValueLookups);
-        var html = new HtmlPageRenderer().RenderList(
-            options.RoutePrefix,
-            metadata,
-            new RenderedListView(
-                CreateRenderedListRows(options.RoutePrefix, metadata, rows, relatedValueLookups),
-                queryResult.Query.Filters.Select(filter => new RenderedListFilter(filter.Field, filter.Operator, filter.Value)).ToList(),
-                queryResult.Query.Sorts.Select(sort => new RenderedListSort(sort.Field, sort.Direction)).ToList(),
-                queryResult.Errors,
-                queryResult.Query.Offset,
-                queryResult.Query.Limit));
+        var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request);
+        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, view);
         return Results.Content(html, HtmlContentType);
+    }
+
+    private static IResult RenderEntityListData(EfUiOptions options, string entity, HttpRequest request, IServiceProvider services)
+    {
+        var dbContext = ResolveDbContext(services, options.DbContextType);
+        var metadata = GetEntityMetadata(dbContext, entity);
+        if (metadata is null)
+        {
+            return Results.NotFound();
+        }
+
+        var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request);
+        return Results.Text(JsonSerializer.Serialize(RenderedListPayloadFactory.Create(options.RoutePrefix, metadata, view)), "application/json");
     }
 
     private static IResult RenderCreateForm(EfUiOptions options, string entity, IServiceProvider services)
@@ -344,6 +350,20 @@ public static class EfUiApplicationBuilderExtensions
     }
 
     private sealed record BoundTableQuery(TableQuery Query, IReadOnlyList<string> Errors);
+
+    private static RenderedListView BuildRenderedListView(string routePrefix, DbContext dbContext, EntityMetadata metadata, HttpRequest request)
+    {
+        var queryResult = BindTableQuery(request, metadata);
+        var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata);
+        var rows = ApplyTableQuery(ReadRows(dbContext, metadata.ClrType), metadata, queryResult.Query, relatedValueLookups);
+        return new RenderedListView(
+            CreateRenderedListRows(routePrefix, metadata, rows, relatedValueLookups),
+            queryResult.Query.Filters.Select(filter => new RenderedListFilter(filter.Field, filter.Operator, filter.Value)).ToList(),
+            queryResult.Query.Sorts.Select(sort => new RenderedListSort(sort.Field, sort.Direction)).ToList(),
+            queryResult.Errors,
+            queryResult.Query.Offset,
+            queryResult.Query.Limit);
+    }
 
     private static IReadOnlyList<object> ReadRows(DbContext dbContext, Type entityClrType)
     {

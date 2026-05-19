@@ -175,83 +175,9 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append("<div class=\"efui-table-loading\" data-role=\"efui-table-loading\" hidden aria-live=\"polite\">Loading table…</div>");
         html.Append("<div class=\"efui-table-host\" data-role=\"efui-table-host\"></div>");
         html.Append("<script type=\"application/json\" data-role=\"efui-table-config\">");
-        html.Append(BuildTableEnhancementConfig(routePrefix, entity, view));
+        html.Append(RenderedListPayloadFactory.Serialize(routePrefix, entity, view));
         html.Append("</script></section>");
     }
-
-    private static string BuildTableEnhancementConfig(string routePrefix, EntityMetadata entity, RenderedListView view)
-    {
-        var activeFilters = view.Filters
-            .GroupBy(filter => filter.Field, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
-        var activeSorts = view.Sorts
-            .GroupBy(sort => sort.Field, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
-
-        var payload = new
-        {
-            library = "tabulator",
-            entity = entity.RouteName,
-            listUrl = $"{routePrefix}/{entity.RouteName}",
-            columns = entity.AllProperties
-                .Select(property =>
-                {
-                    activeFilters.TryGetValue(property.Name, out var activeFilter);
-                    activeSorts.TryGetValue(property.Name, out var activeSort);
-                    return new
-                    {
-                        field = property.Name,
-                        title = property.Name,
-                        headerSort = true,
-                        headerFilter = (object)"input",
-                        filterOperator = (string?)(activeFilter?.Operator ?? GetDefaultFilterOperator(property)),
-                        activeFilterOperator = activeFilter?.Operator,
-                        headerFilterValue = activeFilter?.Value,
-                        sortDirection = activeSort?.Direction,
-                        isFilterable = true
-                    };
-                })
-                .Concat(new[]
-                {
-                    new
-                    {
-                        field = "__actions",
-                        title = "Actions",
-                        headerSort = false,
-                        headerFilter = (object)false,
-                        filterOperator = (string?)null,
-                        activeFilterOperator = (string?)null,
-                        headerFilterValue = (string?)null,
-                        sortDirection = (string?)null,
-                        isFilterable = false
-                    }
-                })
-                .ToList(),
-            rows = view.Rows.Select(row =>
-            {
-                var values = row.Cells.ToDictionary(
-                    cell => cell.Key,
-                    cell => (object?)new { text = cell.Value.Text, href = cell.Value.Href },
-                    StringComparer.Ordinal);
-                values["__actions"] = BuildRowActionsMarkup(routePrefix, entity, row.Key);
-                return values;
-            }).ToList(),
-            query = new
-            {
-                filters = view.Filters,
-                sorts = view.Sorts,
-                offset = view.Offset,
-                limit = view.Limit
-            }
-        };
-
-        return JsonSerializer.Serialize(payload).Replace("</script", "<\\/script", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string GetDefaultFilterOperator(EntityPropertyMetadata property)
-        => property.RelatedRouteName is not null || property.ClrType == typeof(string)
-            ? "contains"
-            : "eq";
 
     private static string BuildRowActionsMarkup(string routePrefix, EntityMetadata entity, string rowKey)
     {

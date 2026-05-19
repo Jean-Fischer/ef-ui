@@ -221,6 +221,8 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         using var config = GetTableConfig(html);
         var root = config.RootElement;
         root.GetProperty("listUrl").GetString().Should().Be("/simple/users");
+        root.GetProperty("dataUrl").GetString().Should().Be("/simple/users/data");
+        root.GetProperty("status").GetProperty("items").EnumerateArray().Select(item => item.GetString()).Should().ContainInOrder("Name contains Ada", "Email desc");
 
         var nameColumn = GetColumn(root, "Name");
         nameColumn.GetProperty("headerSort").GetBoolean().Should().BeTrue();
@@ -240,6 +242,26 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         actionsColumn.GetProperty("headerSort").GetBoolean().Should().BeFalse();
         actionsColumn.GetProperty("headerFilter").ValueKind.Should().Be(JsonValueKind.False);
         actionsColumn.GetProperty("filterOperator").ValueKind.Should().Be(JsonValueKind.Null);
+
+        var activeSort = root.GetProperty("query").GetProperty("sorts").EnumerateArray().Single();
+        activeSort.GetProperty("Field").GetString().Should().Be("Email");
+        activeSort.GetProperty("Direction").GetString().Should().Be("desc");
+    }
+
+    [Fact]
+    public async Task Get_entity_data_endpoint_returns_json_payload_for_active_query_state()
+    {
+        using var response = await _client.GetAsync("/simple/users/data?filter.0.field=Name&filter.0.op=contains&filter.0.value=Ada&sort.0.field=Email&sort.0.dir=desc&offset=0&limit=25");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/json");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = payload.RootElement;
+        root.GetProperty("listUrl").GetString().Should().Be("/simple/users");
+        root.GetProperty("dataUrl").GetString().Should().Be("/simple/users/data");
+        root.GetProperty("rows").GetArrayLength().Should().BeGreaterThan(0);
+        root.GetProperty("status").GetProperty("items").EnumerateArray().Select(item => item.GetString()).Should().ContainInOrder("Name contains Ada", "Email desc");
 
         var activeSort = root.GetProperty("query").GetProperty("sorts").EnumerateArray().Single();
         activeSort.GetProperty("Field").GetString().Should().Be("Email");

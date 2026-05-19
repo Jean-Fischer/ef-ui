@@ -192,6 +192,7 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         using var config = GetTableConfig(html);
         var root = config.RootElement;
         root.GetProperty("listUrl").GetString().Should().Be("/chinook/tracks");
+        root.GetProperty("dataUrl").GetString().Should().Be("/chinook/tracks/data");
 
         var mediaTypeColumn = GetColumn(root, "MediaTypeId");
         mediaTypeColumn.GetProperty("headerSort").GetBoolean().Should().BeTrue();
@@ -205,6 +206,23 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         actionsColumn.GetProperty("headerSort").GetBoolean().Should().BeFalse();
         actionsColumn.GetProperty("headerFilter").ValueKind.Should().Be(JsonValueKind.False);
         actionsColumn.GetProperty("filterOperator").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task Get_tracks_data_endpoint_returns_json_payload_for_related_row_prefilter()
+    {
+        using var response = await _client.GetAsync("/chinook/tracks/data?filter.0.field=MediaTypeId&filter.0.op=eq&filter.0.value=1");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/json");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = payload.RootElement;
+        root.GetProperty("listUrl").GetString().Should().Be("/chinook/tracks");
+        root.GetProperty("dataUrl").GetString().Should().Be("/chinook/tracks/data");
+        root.GetProperty("status").GetProperty("items").EnumerateArray().Select(item => item.GetString()).Should().Contain("MediaTypeId eq 1");
+        root.GetProperty("rows").EnumerateArray().Any(row => row.GetProperty("MediaTypeId").GetProperty("href").GetString() == "/chinook/media_types/1/edit").Should().BeTrue();
+        root.GetProperty("rows").EnumerateArray().Any(row => row.GetProperty("MediaTypeId").GetProperty("href").GetString() == "/chinook/media_types/2/edit").Should().BeFalse();
     }
 
     [Fact]

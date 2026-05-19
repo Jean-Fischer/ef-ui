@@ -165,6 +165,10 @@ public class HtmlPageRendererTests
         using var config = GetTableConfig(html);
         var root = config.RootElement;
         root.GetProperty("listUrl").GetString().Should().Be("/efui/users");
+        root.GetProperty("dataUrl").GetString().Should().Be("/efui/users/data");
+        root.GetProperty("status").GetProperty("items").EnumerateArray().Select(item => item.GetString()).Should().ContainInOrder("Name contains Ada", "Email desc");
+        root.GetProperty("status").GetProperty("errors").GetArrayLength().Should().Be(0);
+        root.GetProperty("status").GetProperty("emptyMessage").ValueKind.Should().Be(JsonValueKind.Null);
 
         var nameColumn = GetColumn(root, "Name");
         nameColumn.GetProperty("title").GetString().Should().Be("Name");
