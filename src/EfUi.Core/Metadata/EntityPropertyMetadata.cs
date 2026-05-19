@@ -7,4 +7,5 @@ public sealed record EntityPropertyMetadata(
     bool IsEditableOnUpdate,
     bool IsPrimaryKey = false,
     Type? RelatedClrType = null,
-    string? RelatedRouteName = null);
+    string? RelatedRouteName = null,
+    string? RelatedDisplayPropertyName = null);

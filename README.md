@@ -17,6 +17,7 @@ Form behavior:
 - database-generated primary keys are hidden on create and shown read-only on edit
 - assigned primary keys stay editable on create and are shown read-only on edit
 - many-to-one relationships render as dropdowns
+- you can override FK display text with `EfUiDisplayColumn` on a navigation property, or set a class-level default on the related entity type
 - supported many-to-many skip navigations render as a filterable checkbox picker with client-side contains search
 - supported one-to-many relationships render on edit forms as a filterable checkbox picker, with rows already assigned elsewhere shown disabled
 - join entities with payload are managed through related-row links instead of inline nested editors
@@ -29,7 +30,7 @@ List behavior:
 - the enhanced grid updates the address bar with the current query state without full-page blink
 - the server owns filtering and sorting semantics and returns the authoritative result set for each query
 - list pages show a compact table status strip for active filters, active sorts, and query validation errors
-- FK display cells can render as links to the related row edit page
+- FK display cells can render as links to the related row edit page using the configured display column
 - related-row links can open child tables with a visible pre-applied filter in the URL
 - list pages keep a server-rendered HTML table as fallback if the Tabulator enhancement is unavailable
 - the enhanced grid uses in-grid loading while it refreshes table data

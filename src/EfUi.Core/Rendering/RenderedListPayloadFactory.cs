@@ -36,7 +36,8 @@ public static class RenderedListPayloadFactory
                         activeFilterOperator = activeFilter?.Operator,
                         headerFilterValue = activeFilter?.Value,
                         sortDirection = activeSort?.Direction,
-                        isFilterable = true
+                        isFilterable = true,
+                        relatedDisplayPropertyName = property.RelatedDisplayPropertyName
                     };
                 })
                 .Concat(new[]
@@ -52,7 +53,8 @@ public static class RenderedListPayloadFactory
                         activeFilterOperator = (string?)null,
                         headerFilterValue = (string?)null,
                         sortDirection = (string?)null,
-                        isFilterable = false
+                        isFilterable = false,
+                        relatedDisplayPropertyName = (string?)null
                     }
                 })
                 .ToList(),

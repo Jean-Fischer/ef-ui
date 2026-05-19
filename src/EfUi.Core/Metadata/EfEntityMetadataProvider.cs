@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -47,7 +48,8 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 ForeignKey = foreignKey,
                 Property = scalarProperties.Single(property => property.Name == foreignKey.Properties[0].Name),
                 NavigationName = foreignKey.DependentToPrincipal!.Name,
-                RelatedClrType = foreignKey.PrincipalEntityType.ClrType
+                RelatedClrType = foreignKey.PrincipalEntityType.ClrType,
+                RelatedDisplayPropertyName = ResolveRelatedDisplayPropertyName(foreignKey)
             })
             .ToList();
 
@@ -60,7 +62,8 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                     : property with
                     {
                         RelatedClrType = referenceField.RelatedClrType,
-                        RelatedRouteName = GetRouteName(referenceField.ForeignKey.PrincipalEntityType)
+                        RelatedRouteName = GetRouteName(referenceField.ForeignKey.PrincipalEntityType),
+                        RelatedDisplayPropertyName = referenceField.RelatedDisplayPropertyName
                     };
             })
             .ToList();
@@ -80,7 +83,8 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 navigation.Name,
                 navigation.TargetEntityType.ClrType,
                 false,
-                CollectionRelationshipKind.ManyToMany))
+                CollectionRelationshipKind.ManyToMany,
+                ResolveRelatedDisplayPropertyName(navigation.TargetEntityType)))
             .ToList();
 
         var oneToManyFields = new List<EditableFieldMetadata>();
@@ -112,7 +116,8 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 navigation.Name,
                 navigation.TargetEntityType.ClrType,
                 !IsNullable(classification.ForeignKey.Properties[0].ClrType),
-                CollectionRelationshipKind.OneToMany));
+                CollectionRelationshipKind.OneToMany,
+                ResolveRelatedDisplayPropertyName(navigation.TargetEntityType)));
         }
 
         var primaryKeyMetadata = scalarProperties.Single(property => property.IsPrimaryKey);
@@ -131,7 +136,8 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                     field.Property.Name,
                     field.NavigationName,
                     field.RelatedClrType,
-                    !IsNullable(field.Property.ClrType))))
+                    !IsNullable(field.Property.ClrType),
+                    RelatedDisplayPropertyName: field.RelatedDisplayPropertyName)))
             .ToList();
 
         var updateEditableFields = editableProperties
@@ -146,7 +152,8 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                     field.Property.Name,
                     field.NavigationName,
                     field.RelatedClrType,
-                    !IsNullable(field.Property.ClrType))))
+                    !IsNullable(field.Property.ClrType),
+                    RelatedDisplayPropertyName: field.RelatedDisplayPropertyName)))
             .Concat(collectionFields)
             .Concat(oneToManyFields)
             .ToList();
@@ -198,11 +205,26 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             property.Name,
             null,
             null,
-            !IsNullable(property.ClrType));
+            !IsNullable(property.ClrType),
+            RelatedDisplayPropertyName: property.RelatedDisplayPropertyName);
 
     private static bool IsSharedJoinEntity(IEntityType entityType)
         => entityType.ClrType == typeof(Dictionary<string, object>)
            && entityType.FindPrimaryKey()?.Properties.Count != 1;
+
+    private static string? ResolveRelatedDisplayPropertyName(IForeignKey foreignKey)
+    {
+        var navigationAttribute = foreignKey.DependentToPrincipal?.PropertyInfo?.GetCustomAttribute<EfUiDisplayColumnAttribute>();
+        if (navigationAttribute is not null)
+        {
+            return navigationAttribute.PropertyName;
+        }
+
+        return foreignKey.PrincipalEntityType.ClrType.GetCustomAttribute<EfUiDisplayColumnAttribute>()?.PropertyName;
+    }
+
+    private static string? ResolveRelatedDisplayPropertyName(IEntityType entityType)
+        => entityType.ClrType.GetCustomAttribute<EfUiDisplayColumnAttribute>()?.PropertyName;
 
     private static string GetRouteName(IEntityType entityType)
     {

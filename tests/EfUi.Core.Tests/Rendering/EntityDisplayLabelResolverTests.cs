@@ -7,6 +7,23 @@ namespace EfUi.Core.Tests.Rendering;
 public class EntityDisplayLabelResolverTests
 {
     [Fact]
+    public void Resolve_prefers_explicit_display_property_before_heuristics()
+    {
+        var row = new RowWithDisplayProperties
+        {
+            Id = 7,
+            Code = "C-007",
+            Name = "Ada Lovelace",
+            Title = "Countess",
+            Email = "ada@example.com"
+        };
+
+        var label = EntityDisplayLabelResolver.Resolve(row, nameof(RowWithDisplayProperties.Code), nameof(RowWithDisplayProperties.Id));
+
+        label.Should().Be("C-007");
+    }
+
+    [Fact]
     public void Resolve_prefers_name_over_other_candidates()
     {
         var row = new RowWithDisplayProperties
@@ -87,6 +104,22 @@ public class EntityDisplayLabelResolverTests
     }
 
     [Fact]
+    public void Resolve_falls_back_when_explicit_display_property_is_missing()
+    {
+        var row = new RowWithDisplayProperties
+        {
+            Id = 7,
+            Name = "Ada Lovelace",
+            Title = "Countess",
+            Email = "ada@example.com"
+        };
+
+        var label = EntityDisplayLabelResolver.Resolve(row, "Missing", nameof(RowWithDisplayProperties.Id));
+
+        label.Should().Be("Ada Lovelace");
+    }
+
+    [Fact]
     public void Resolve_uses_non_string_preferred_property_values_via_to_string()
     {
         var row = new RowWithNonStringDisplayProperty
@@ -103,6 +136,8 @@ public class EntityDisplayLabelResolverTests
     private sealed class RowWithDisplayProperties
     {
         public int Id { get; init; }
+
+        public string? Code { get; init; }
 
         public string? Name { get; init; }
 

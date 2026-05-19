@@ -94,6 +94,26 @@ public class EntityMetadataProviderTests
     }
 
     [Fact]
+    public void GetEntity_uses_navigation_override_before_entity_default_for_fk_display_columns()
+    {
+        using var db = CreateDisplayColumnDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var order = sut.GetEntity(db, "orders");
+
+        var billingCustomerId = order.AllProperties.Single(property => property.Name == "BillingCustomerId");
+        billingCustomerId.RelatedDisplayPropertyName.Should().Be("Code");
+        billingCustomerId.RelatedRouteName.Should().Be("customers");
+
+        var shippingCustomerId = order.AllProperties.Single(property => property.Name == "ShippingCustomerId");
+        shippingCustomerId.RelatedDisplayPropertyName.Should().Be("Name");
+        shippingCustomerId.RelatedRouteName.Should().Be("customers");
+
+        order.UpdateEditableFields.Single(field => field.Name == "BillingCustomer").RelatedDisplayPropertyName.Should().Be("Code");
+        order.UpdateEditableFields.Single(field => field.Name == "ShippingCustomer").RelatedDisplayPropertyName.Should().Be("Name");
+    }
+
+    [Fact]
     public void GetEntities_skips_shared_join_entities_without_single_primary_keys()
     {
         using var db = CreateManyToManyDb();
@@ -244,6 +264,18 @@ public class EntityMetadataProviderTests
         return db;
     }
 
+    private static DisplayColumnDbContext CreateDisplayColumnDb()
+    {
+        var options = new DbContextOptionsBuilder<DisplayColumnDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        var db = new DisplayColumnDbContext(options);
+        db.Database.OpenConnection();
+        db.Database.EnsureCreated();
+        return db;
+    }
+
     private sealed class RouteNameDbContext(DbContextOptions<RouteNameDbContext> options) : DbContext(options)
     {
         public DbSet<User> Accounts => Set<User>();
@@ -320,6 +352,33 @@ public class EntityMetadataProviderTests
         }
     }
 
+    private sealed class DisplayColumnDbContext(DbContextOptions<DisplayColumnDbContext> options) : DbContext(options)
+    {
+        public DbSet<Customer> Customers => Set<Customer>();
+        public DbSet<OrderWithDisplayColumns> Orders => Set<OrderWithDisplayColumns>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Customer>(builder =>
+            {
+                builder.ToTable("customers");
+                builder.HasKey(x => x.Id);
+            });
+
+            modelBuilder.Entity<OrderWithDisplayColumns>(builder =>
+            {
+                builder.ToTable("orders");
+                builder.HasKey(x => x.Id);
+                builder.HasOne(x => x.BillingCustomer)
+                    .WithMany()
+                    .HasForeignKey(x => x.BillingCustomerId);
+                builder.HasOne(x => x.ShippingCustomer)
+                    .WithMany()
+                    .HasForeignKey(x => x.ShippingCustomerId);
+            });
+        }
+    }
+
     private sealed class Asset
     {
         public int Id { get; set; }
@@ -376,5 +435,23 @@ public class EntityMetadataProviderTests
         public decimal UnitPrice { get; set; }
         public Order Order { get; set; } = null!;
         public Product Product { get; set; } = null!;
+    }
+
+    [EfUiDisplayColumn(nameof(Customer.Name))]
+    private sealed class Customer
+    {
+        public int Id { get; set; }
+        public string Code { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+    }
+
+    private sealed class OrderWithDisplayColumns
+    {
+        public int Id { get; set; }
+        public int BillingCustomerId { get; set; }
+        [EfUiDisplayColumn(nameof(Customer.Code))]
+        public Customer BillingCustomer { get; set; } = null!;
+        public int ShippingCustomerId { get; set; }
+        public Customer ShippingCustomer { get; set; } = null!;
     }
 }

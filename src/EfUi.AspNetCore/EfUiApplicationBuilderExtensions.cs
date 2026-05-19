@@ -412,10 +412,11 @@ public static class EfUiApplicationBuilderExtensions
                 continue;
             }
 
+            var relatedProperty = metadata.AllProperties.Single(property => property.Name == foreignKeyProperty.Name);
             lookups[foreignKeyProperty.Name] = ReadRows(dbContext, foreignKey.PrincipalEntityType.ClrType)
                 .ToDictionary(
                     row => FormatValue(row.GetType().GetProperty(relatedPrimaryKey.Name)?.GetValue(row)),
-                    row => GetRelatedEntityLabel(row, relatedPrimaryKey.Name),
+                    row => GetRelatedEntityLabel(row, relatedPrimaryKey.Name, relatedProperty.RelatedDisplayPropertyName),
                     StringComparer.Ordinal);
         }
 
@@ -576,7 +577,7 @@ public static class EfUiApplicationBuilderExtensions
 
         var keyValue = row.GetType().GetProperty(primaryKey.Name)?.GetValue(row);
         var value = FormatValue(keyValue);
-        var label = GetRelatedEntityLabel(row, primaryKey.Name);
+        var label = GetRelatedEntityLabel(row, primaryKey.Name, field.RelatedDisplayPropertyName);
         var selected = selectedValues.Contains(value);
 
         if (field.Kind == EditableFieldKind.Collection
@@ -600,8 +601,8 @@ public static class EfUiApplicationBuilderExtensions
         return new RelatedEntityOption(value, label, selected);
     }
 
-    private static string GetRelatedEntityLabel(object row, string primaryKeyPropertyName)
-        => EntityDisplayLabelResolver.Resolve(row, primaryKeyPropertyName);
+    private static string GetRelatedEntityLabel(object row, string primaryKeyPropertyName, string? displayPropertyName = null)
+        => EntityDisplayLabelResolver.Resolve(row, displayPropertyName, primaryKeyPropertyName);
 
     private static HashSet<string> GetSelectedValues(DbContext dbContext, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string[]>? submittedValues)
     {

@@ -197,6 +197,40 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
+    public void RenderedListPayload_includes_related_display_property_names()
+    {
+        var metadata = new EntityMetadata(
+            "Order",
+            "orders",
+            typeof(object),
+            PrimaryKey("Id", typeof(int)),
+            new[]
+            {
+                PrimaryKey("Id", typeof(int)),
+                new EntityPropertyMetadata("BillingCustomerId", typeof(int), true, true, false, typeof(object), "customers", "Code")
+            },
+            new[]
+            {
+                Editable("BillingCustomerId", typeof(int))
+            });
+
+        var payload = RenderedListPayloadFactory.Create("/efui", metadata, new RenderedListView(
+            new[]
+            {
+                new RenderedListRow("1", new Dictionary<string, RenderedListCell>
+                {
+                    ["Id"] = Cell("1"),
+                    ["BillingCustomerId"] = Cell("ACME")
+                })
+            }));
+
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(payload));
+        var column = GetColumn(json.RootElement, "BillingCustomerId");
+
+        column.GetProperty("relatedDisplayPropertyName").GetString().Should().Be("Code");
+    }
+
+    [Fact]
     public void RenderList_renders_linked_cells_from_prepared_display_values()
     {
         var sut = new HtmlPageRenderer();

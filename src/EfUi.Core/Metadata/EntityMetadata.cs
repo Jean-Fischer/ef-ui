@@ -25,7 +25,8 @@ public sealed record EntityMetadata
                     property.Name,
                     null,
                     null,
-                    false))
+                    false,
+                    RelatedDisplayPropertyName: property.RelatedDisplayPropertyName))
                 .ToList(),
             editableProperties
                 .Select(property => new EditableFieldMetadata(
@@ -35,7 +36,8 @@ public sealed record EntityMetadata
                     property.Name,
                     null,
                     null,
-                    false))
+                    false,
+                    RelatedDisplayPropertyName: property.RelatedDisplayPropertyName))
                 .ToList(),
             [])
     {

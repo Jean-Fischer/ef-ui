@@ -15,4 +15,5 @@ public sealed record EditableFieldMetadata(
     string? NavigationPropertyName,
     Type? RelatedClrType,
     bool IsRequired,
-    CollectionRelationshipKind CollectionRelationshipKind = CollectionRelationshipKind.None);
+    CollectionRelationshipKind CollectionRelationshipKind = CollectionRelationshipKind.None,
+    string? RelatedDisplayPropertyName = null);
