@@ -22,6 +22,27 @@ Form behavior:
 - supported one-to-many relationships render on edit forms as a filterable checkbox picker, with rows already assigned elsewhere shown disabled
 - join entities with payload are managed through related-row links instead of inline nested editors
 
+Authorization:
+- EF UI authorization is opt-in and uses standard ASP.NET Core role checks
+- enable it with `options.RequireAuthorization = true`
+- browsing routes accept users in either `ReadOnly` or `Edit`
+- create, update, and delete routes require `Edit`
+- the host app still owns authentication; EF UI only consumes the authenticated user and role claims
+- unauthenticated requests return the framework's normal `401` response and forbidden requests return `403`
+- the sample host includes a small dev-only auth switch on the home page so you can try anonymous, `ReadOnly`, and `Edit` profiles locally
+- the Chinook mount is protected in the sample host so you can verify the authorization flow without wiring up a separate identity provider
+
+Example:
+
+```csharp
+app.UseEfUi(options =>
+{
+    options.DbContextType = typeof(ChinookDbContext);
+    options.RoutePrefix = "/chinook";
+    options.RequireAuthorization = true;
+});
+```
+
 List behavior:
 - every page includes breadcrumb navigation so you can move back to EF UI home, the current mount, and the current entity list
 - list state is URL-driven using `filter.N.field`, `filter.N.op`, `filter.N.value`, `sort.N.field`, `sort.N.dir`, `offset`, and `limit`
