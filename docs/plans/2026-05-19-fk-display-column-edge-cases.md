@@ -124,14 +124,58 @@ My current bias:
 - **skip keyless entities for now**
 - if we ever need them, treat them as a separate read-only feature rather than part of FK display customization
 
-## Open questions for us to decide together
+## Graceful error reporting
 
-1. Should keyless entities be excluded, read-only only, or fully supported?
-2. Should composite keys be a hard reject or a future feature?
-3. Should shadow FKs be ignored, or should we add a second configuration path later?
-4. Is a duplicated label acceptable when the selected display column is not unique?
-5. Do we want display-label customization to affect filtering and sorting exactly as it affects visible text?
+If an entity or relationship cannot be loaded, we should prefer a clear, consolidated error report over a silent skip.
+
+A good pattern would be:
+
+1. Collect all load/discovery failures for a mount or page.
+2. Continue rendering anything that is still valid when possible.
+3. Show a compact error summary near the top of the page, or a dedicated error page if nothing can be rendered.
+4. Include, for each failed entity or relationship:
+   - the entity name
+   - the field/navigation name, when known
+   - the reason it could not be loaded
+   - a short hint such as “not supported yet” or “falls back to heuristic display”
+
+That gives us a middle ground between two bad extremes:
+
+- silent failure, where users do not know why something is missing
+- hard failure, where one unsupported edge case breaks the whole UI
+
+### Suggested visibility by edge case
+
+| Unsupported case | Suggested visibility | Reason |
+|---|---|---|
+| Keyless entity | High | Users can reasonably expect read-only views or at least a clear explanation if the entity is omitted |
+| Composite primary key | High | Common enough in some domains to deserve an explicit “not supported yet” message |
+| Composite foreign key | High | If we do not support it, the user should know why the relationship is missing |
+| Shadow FK / no navigation property | Medium to High | Frequent in legacy models; a specific message helps users understand why the attribute cannot be applied |
+| Computed / unmapped display property | Low | Usually a configuration mistake; fallback is often enough |
+| Missing attribute target property | Low | Safe fallback is usually better than a visible error |
+| Duplicate labels | Low | Cosmetic issue; the link still points to the right row |
+| Inheritance hierarchy label ambiguity | Medium | Probably worth warning about if the resolved display property is inconsistent |
+| Large lookup set / performance risk | Low | More of a performance budget issue than a correctness issue |
+
+### My current bias
+
+- **Keyless entity:** if we can support it gracefully with a stable technical identity, that is ideal; otherwise render a clear omission/error report instead of failing silently.
+- **Composite primary key:** hard reject for now, but report the reason clearly.
+- **Shadow FK:** yes, this is likely frequent enough that we should think about a graceful fallback path or a secondary configuration path later.
+- **Duplicate labels:** acceptable if it is only cosmetic.
+- **Filtering and sorting:** yes, the resolved display label should continue to drive those behaviors too.
+
+## Provisional answers from your notes
+
+You already answered the open questions in a useful way, so I am recording the current direction here:
+
+1. **Keyless entities:** prefer graceful support if we can derive a stable technical identity; otherwise show a clear error/omission report rather than pretending they do not exist.
+2. **Composite keys:** keep as a hard reject for now.
+3. **Shadow FKs:** likely frequent enough that we should consider a graceful fallback path or a second configuration path later; the current navigation-property attribute model may not be enough.
+4. **Duplicate labels:** acceptable when cosmetic.
+5. **Filtering and sorting:** yes, they should already follow the visible resolved label.
 
 ## Proposed next step
 
-Once we agree on the shortlist, I can turn the chosen items into a small implementation plan and keep the rest explicitly out of scope.
+Once we agree on which unsupported cases deserve user-visible reporting versus quiet fallback, I can turn that into a short implementation plan and keep the rest explicitly out of scope.
