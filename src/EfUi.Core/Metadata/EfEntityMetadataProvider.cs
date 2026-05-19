@@ -50,7 +50,7 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             .ToHashSet(StringComparer.Ordinal);
 
         var collectionFields = BuildManyToManyCollectionFields(entityType, routeName, issues);
-        var (oneToManyFields, relatedManagementLinks) = BuildOneToManyFields(entityType, routeName);
+        var (oneToManyFields, relatedManagementLinks) = BuildOneToManyFields(entityType);
 
         var primaryKeyMetadata = scalarProperties.Single(property => property.IsPrimaryKey);
         var editableProperties = scalarProperties.Where(property => property.IsEditableOnUpdate).ToList();
@@ -207,7 +207,7 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
         return collectionFields;
     }
 
-    private static (List<EditableFieldMetadata> OneToManyFields, List<RelatedEntityManagementLink> RelatedManagementLinks) BuildOneToManyFields(IEntityType entityType, string routeName)
+    private static (List<EditableFieldMetadata> OneToManyFields, List<RelatedEntityManagementLink> RelatedManagementLinks) BuildOneToManyFields(IEntityType entityType)
     {
         var oneToManyFields = new List<EditableFieldMetadata>();
         var relatedManagementLinks = new List<RelatedEntityManagementLink>();

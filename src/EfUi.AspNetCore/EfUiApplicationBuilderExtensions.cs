@@ -241,27 +241,27 @@ public static class EfUiApplicationBuilderExtensions
         return Results.Content(html, HtmlContentType);
     }
 
-    private static RouteHandlerBuilder RequireBrowserAuthorization(RouteHandlerBuilder builder, EfUiOptions options)
+    private static void RequireBrowserAuthorization(RouteHandlerBuilder builder, EfUiOptions options)
     {
         if (!options.RequireAuthorization)
         {
-            return builder;
+            return;
         }
 
-        return builder.RequireAuthorization(new AuthorizeAttribute
+        builder.RequireAuthorization(new AuthorizeAttribute
         {
             Roles = string.Join(',', new[] { options.ReadOnlyRoleName, options.EditRoleName }.Where(role => !string.IsNullOrWhiteSpace(role)))
         });
     }
 
-    private static RouteHandlerBuilder RequireEditAuthorization(RouteHandlerBuilder builder, EfUiOptions options)
+    private static void RequireEditAuthorization(RouteHandlerBuilder builder, EfUiOptions options)
     {
         if (!options.RequireAuthorization)
         {
-            return builder;
+            return;
         }
 
-        return builder.RequireAuthorization(new AuthorizeAttribute
+        builder.RequireAuthorization(new AuthorizeAttribute
         {
             Roles = options.EditRoleName
         });
@@ -288,16 +288,16 @@ public static class EfUiApplicationBuilderExtensions
             .Select(issue => $"{issue.RouteName} — {issue.Message}")
             .ToList();
 
-    private static IReadOnlyList<string> GetBlockingIssueMessages(EntityDiscoveryResult discovery)
-        => discovery.Issues
-            .Where(issue => !issue.CanRender)
-            .Select(issue => $"{issue.RouteName} — {issue.Message}")
-            .ToList();
-
     private static IReadOnlyList<string> GetRenderableIssueMessages(EntityDiscoveryResult discovery, string entity)
         => discovery.Issues
             .Where(issue => issue.CanRender && string.Equals(issue.RouteName, entity, StringComparison.OrdinalIgnoreCase))
             .Select(issue => issue.Message)
+            .ToList();
+
+    private static IReadOnlyList<string> GetBlockingIssueMessages(EntityDiscoveryResult discovery)
+        => discovery.Issues
+            .Where(issue => !issue.CanRender)
+            .Select(issue => $"{issue.RouteName} — {issue.Message}")
             .ToList();
 
     private static IResult RenderMissingEntityResult(string routePrefix, EntityDiscoveryResult discovery, string entity)
@@ -308,7 +308,7 @@ public static class EfUiApplicationBuilderExtensions
             .ToList();
 
         return blockingIssues.Count > 0
-            ? Results.Content(new HtmlPageRenderer().RenderErrorPage(routePrefix, entity, blockingIssues), HtmlContentType, statusCode: StatusCodes.Status400BadRequest)
+            ? Results.Content(HtmlPageRenderer.RenderErrorPage(routePrefix, entity, blockingIssues), HtmlContentType, statusCode: StatusCodes.Status400BadRequest)
             : Results.NotFound();
     }
 
@@ -544,13 +544,18 @@ public static class EfUiApplicationBuilderExtensions
             Func<object, object?> keySelector = row => GetSortKeyValue(row, property, relatedValueLookups);
             var descending = string.Equals(sort.Direction, "desc", StringComparison.OrdinalIgnoreCase);
 
-            orderedRows = orderedRows is null
-                ? descending
+            if (orderedRows is null)
+            {
+                orderedRows = descending
                     ? filteredRows.OrderByDescending(keySelector, SortKeyComparer.Instance)
-                    : filteredRows.OrderBy(keySelector, SortKeyComparer.Instance)
-                : descending
+                    : filteredRows.OrderBy(keySelector, SortKeyComparer.Instance);
+            }
+            else
+            {
+                orderedRows = descending
                     ? orderedRows.ThenByDescending(keySelector, SortKeyComparer.Instance)
                     : orderedRows.ThenBy(keySelector, SortKeyComparer.Instance);
+            }
         }
 
         return (orderedRows ?? filteredRows)
@@ -809,12 +814,9 @@ public static class EfUiApplicationBuilderExtensions
     private static IReadOnlyDictionary<string, string[]> EnsureCollectionFieldsPresent(EntityMetadata metadata, Dictionary<string, string[]> submittedValues, bool isCreate)
     {
         var editableFields = isCreate ? metadata.CreateEditableFields : metadata.UpdateEditableFields;
-        foreach (var field in editableFields.Where(field => field.Kind == EditableFieldKind.Collection))
+        foreach (var field in editableFields.Where(field => field.Kind == EditableFieldKind.Collection && !submittedValues.ContainsKey(field.Name)))
         {
-            if (!submittedValues.ContainsKey(field.Name))
-            {
-                submittedValues[field.Name] = [];
-            }
+            submittedValues[field.Name] = [];
         }
 
         return submittedValues;

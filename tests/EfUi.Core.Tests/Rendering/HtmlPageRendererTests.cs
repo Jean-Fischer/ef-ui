@@ -91,9 +91,7 @@ public class HtmlPageRendererTests
     [Fact]
     public void RenderErrorPage_renders_error_summary_and_back_link()
     {
-        var sut = new HtmlPageRenderer();
-
-        var html = sut.RenderErrorPage("/efui", "reports", ["Entity 'ReportRow' has no primary key and cannot be rendered yet."]);
+        var html = HtmlPageRenderer.RenderErrorPage("/efui", "reports", ["Entity 'ReportRow' has no primary key and cannot be rendered yet."]);
 
         html.Should().Contain("class=\"efui-error-summary\"");
         html.Should().Contain("class=\"efui-error\"");

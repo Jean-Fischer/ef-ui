@@ -7,16 +7,17 @@ namespace EfUi.Core.Rendering;
 
 public sealed class HtmlPageRenderer : IHtmlPageRenderer
 {
+    private const string EfUiLabel = "EF UI";
     public string RenderIndex(string routePrefix, IReadOnlyList<EntityMetadata> entities, IReadOnlyList<string>? warnings = null, IReadOnlyList<string>? errors = null)
     {
         var html = new StringBuilder();
         AppendDocumentStart(html, routePrefix, "efui-page");
         RenderBreadcrumbs(html, [
-            new BreadcrumbItem("EF UI", "/"),
+            new BreadcrumbItem(EfUiLabel, "/"),
             new BreadcrumbItem(GetMountDisplayName(routePrefix))
         ]);
         html.Append("<section class=\"efui-surface\">");
-        html.Append("<h1>EF UI</h1>");
+        html.Append($"<h1>{EfUiLabel}</h1>");
         RenderIssueSummary(html, warnings ?? [], warning: true);
         RenderIssueSummary(html, errors ?? [], warning: false);
         html.Append("<ul class=\"efui-index-list efui-link-grid\">");
@@ -35,7 +36,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         var html = new StringBuilder();
         AppendDocumentStart(html, routePrefix, "efui-page", BuildTableEnhancementHead(routePrefix));
         RenderBreadcrumbs(html, [
-            new BreadcrumbItem("EF UI", "/"),
+            new BreadcrumbItem(EfUiLabel, "/"),
             new BreadcrumbItem(GetMountDisplayName(routePrefix), routePrefix),
             new BreadcrumbItem(entity.DisplayName)
         ]);
@@ -43,7 +44,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append($"<h1>{WebUtility.HtmlEncode(entity.DisplayName)}</h1>");
         html.Append("<div class=\"efui-page-actions\">");
         html.Append($"<a class=\"efui-primary-link\" href=\"{routePrefix}/{entity.RouteName}/new\">Create New</a>");
-        html.Append("</div>");
+        AppendClosingDivTag(html);
         RenderTableStatus(html, view);
         RenderTableEnhancementShell(html, routePrefix, entity, view);
         html.Append("<div class=\"efui-table-wrapper\" data-role=\"efui-table-fallback\">");
@@ -123,7 +124,13 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             html.Append($"<div class=\"{itemClass}\">{WebUtility.HtmlEncode(message)}</div>");
         }
 
-        html.Append("</div>");
+        AppendClosingDivTag(html);
+    }
+
+    private static void AppendClosingDivTag(StringBuilder html)
+    {
+        html.Append('<');
+        html.Append("/div>");
     }
 
     private static void RenderBreadcrumbs(StringBuilder html, IReadOnlyList<BreadcrumbItem> items)
@@ -154,7 +161,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         var segment = routePrefix.Trim('/');
         if (string.IsNullOrWhiteSpace(segment))
         {
-            return "EF UI";
+            return EfUiLabel;
         }
 
         var words = segment
@@ -190,12 +197,12 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append("</script></section>");
     }
 
-    public string RenderErrorPage(string routePrefix, string title, IReadOnlyList<string> messages)
+    public static string RenderErrorPage(string routePrefix, string title, IReadOnlyList<string> messages)
     {
         var html = new StringBuilder();
         AppendDocumentStart(html, routePrefix, "efui-page");
         RenderBreadcrumbs(html, [
-            new BreadcrumbItem("EF UI", "/"),
+            new BreadcrumbItem(EfUiLabel, "/"),
             new BreadcrumbItem(GetMountDisplayName(routePrefix), routePrefix),
             new BreadcrumbItem(title)
         ]);
@@ -218,7 +225,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         var html = new StringBuilder();
         AppendDocumentStart(html, routePrefix, "efui-form-page");
         RenderBreadcrumbs(html, [
-            new BreadcrumbItem("EF UI", "/"),
+            new BreadcrumbItem(EfUiLabel, "/"),
             new BreadcrumbItem(GetMountDisplayName(routePrefix), routePrefix),
             new BreadcrumbItem(entity.DisplayName, $"{routePrefix}/{entity.RouteName}"),
             new BreadcrumbItem(isCreate ? "New" : "Edit")

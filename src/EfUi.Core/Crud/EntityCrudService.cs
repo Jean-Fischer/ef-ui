@@ -232,7 +232,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
             return failure;
         }
 
-        var removedChildren = GetRemovedChildren(instance, field.NavigationPropertyName, childKeyProperty.Name, selectedChildKeys).ToList();
+        var removedChildren = GetRemovedChildren(instance, field.NavigationPropertyName!, childKeyProperty.Name, selectedChildKeys).ToList();
         if (field.IsRequired && removedChildren.Count != 0)
         {
             return CrudOperationResult.Failure(field.Name, "Required related rows cannot be removed without reassignment.");
@@ -242,27 +242,32 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         return CrudOperationResult.Success();
     }
 
-    private bool TryGetOneToManyCollectionContext(DbContext dbContext, EditableFieldMetadata field, out Microsoft.EntityFrameworkCore.Metadata.IEntityType childEntityType, out Microsoft.EntityFrameworkCore.Metadata.IProperty childKeyProperty, out Microsoft.EntityFrameworkCore.Metadata.IProperty childForeignKeyProperty, out CrudOperationResult failure)
+    private static bool TryGetOneToManyCollectionContext(DbContext dbContext, EditableFieldMetadata field, out Microsoft.EntityFrameworkCore.Metadata.IEntityType childEntityType, out Microsoft.EntityFrameworkCore.Metadata.IProperty childKeyProperty, out Microsoft.EntityFrameworkCore.Metadata.IProperty childForeignKeyProperty, out CrudOperationResult failure)
     {
-        childEntityType = null!;
-        childKeyProperty = null!;
-        childForeignKeyProperty = null!;
-
         if (field.NavigationPropertyName is null || field.RelatedClrType is null || field.ScalarPropertyName is null)
         {
+            childEntityType = null!;
+            childKeyProperty = null!;
+            childForeignKeyProperty = null!;
             failure = CrudOperationResult.Failure(field.Name, "Invalid collection configuration.");
             return false;
         }
 
-        childEntityType = dbContext.Model.FindEntityType(field.RelatedClrType);
-        childKeyProperty = childEntityType?.FindPrimaryKey()?.Properties.SingleOrDefault();
-        childForeignKeyProperty = childEntityType?.FindProperty(field.ScalarPropertyName);
-        if (childEntityType is null || childKeyProperty is null || childForeignKeyProperty is null)
+        var resolvedChildEntityType = dbContext.Model.FindEntityType(field.RelatedClrType);
+        var resolvedChildKeyProperty = resolvedChildEntityType?.FindPrimaryKey()?.Properties.SingleOrDefault();
+        var resolvedChildForeignKeyProperty = resolvedChildEntityType?.FindProperty(field.ScalarPropertyName);
+        if (resolvedChildEntityType is null || resolvedChildKeyProperty is null || resolvedChildForeignKeyProperty is null)
         {
+            childEntityType = null!;
+            childKeyProperty = null!;
+            childForeignKeyProperty = null!;
             failure = CrudOperationResult.Failure(field.Name, "Related entity must have a single primary key.");
             return false;
         }
 
+        childEntityType = resolvedChildEntityType;
+        childKeyProperty = resolvedChildKeyProperty!;
+        childForeignKeyProperty = resolvedChildForeignKeyProperty!;
         failure = CrudOperationResult.Success();
         return true;
     }
