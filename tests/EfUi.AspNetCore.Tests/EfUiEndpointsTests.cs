@@ -92,6 +92,11 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().Contain("dataLoaderLoading");
         script.Should().Contain("headerSort: column.headerSort !== false");
         script.Should().Contain("headerFilter: column.headerFilter");
+        script.Should().Contain("clearIndexedQuery");
+        script.Should().Contain("filterIndex");
+        script.Should().Contain("sortIndex");
+        script.Should().NotContain("firstFilter");
+        script.Should().NotContain("firstSorter");
         script.Should().NotContain("headerClick:");
         script.Should().NotContain("title += ' ↑'");
         script.Should().NotContain("efui-query-form");
@@ -211,6 +216,22 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var activeSort = root.GetProperty("query").GetProperty("sorts").EnumerateArray().Single();
         activeSort.GetProperty("Field").GetString().Should().Be("Email");
         activeSort.GetProperty("Direction").GetString().Should().Be("desc");
+    }
+
+    [Fact]
+    public async Task Get_entity_page_preserves_multiple_active_filters_and_sorts_in_status_and_config()
+    {
+        var html = await _client.GetStringAsync("/simple/users?filter.0.field=Name&filter.0.op=contains&filter.0.value=Ada&filter.1.field=Email&filter.1.op=contains&filter.1.value=example&sort.0.field=Email&sort.0.dir=desc&sort.1.field=Name&sort.1.dir=asc");
+
+        html.Should().Contain("Name contains Ada");
+        html.Should().Contain("Email contains example");
+        html.Should().Contain("Email desc");
+        html.Should().Contain("Name asc");
+
+        using var config = GetTableConfig(html);
+        var query = config.RootElement.GetProperty("query");
+        query.GetProperty("filters").GetArrayLength().Should().Be(2);
+        query.GetProperty("sorts").GetArrayLength().Should().Be(2);
     }
 
     [Fact]

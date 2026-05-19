@@ -30,15 +30,26 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
 
+    function clearIndexedQuery(params, prefix, suffixes) {
+      Array.from(params.keys()).forEach(function (key) {
+        if (key.indexOf(prefix + '.') !== 0) {
+          return;
+        }
+
+        suffixes.forEach(function (suffix) {
+          if (key.endsWith('.' + suffix)) {
+            params.delete(key);
+          }
+        });
+      });
+    }
+
     function clearFilterQuery(params) {
-      params.delete('filter.0.field');
-      params.delete('filter.0.op');
-      params.delete('filter.0.value');
+      clearIndexedQuery(params, 'filter', ['field', 'op', 'value']);
     }
 
     function clearSortQuery(params) {
-      params.delete('sort.0.field');
-      params.delete('sort.0.dir');
+      clearIndexedQuery(params, 'sort', ['field', 'dir']);
     }
 
     function isBlankFilterValue(value) {
@@ -110,37 +121,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function applyFilterQuery(params, filters) {
       clearFilterQuery(params);
-      var firstFilter = (filters || []).find(function (filter) {
-        return !!filter && !!filter.field && !isBlankFilterValue(filter.value);
-      });
-
-      if (!firstFilter) {
-        return;
-      }
-
-      params.set('filter.0.field', firstFilter.field);
-      params.set('filter.0.op', getFilterOperator(firstFilter.field));
-      params.set('filter.0.value', String(firstFilter.value));
+      (filters || [])
+        .filter(function (filter) {
+          return !!filter && !!filter.field && !isBlankFilterValue(filter.value);
+        })
+        .forEach(function (filter, filterIndex) {
+          params.set('filter.' + filterIndex + '.field', filter.field);
+          params.set('filter.' + filterIndex + '.op', getFilterOperator(filter.field));
+          params.set('filter.' + filterIndex + '.value', String(filter.value));
+        });
     }
 
     function applySortQuery(params, sorters) {
       clearSortQuery(params);
-      var firstSorter = (sorters || []).find(function (sorter) {
-        var field = sorter && (sorter.field || (sorter.column && typeof sorter.column.getField === 'function' ? sorter.column.getField() : ''));
-        return !!field && !!sorter.dir;
-      });
-
-      if (!firstSorter) {
-        return;
-      }
-
-      var field = firstSorter.field || (firstSorter.column && typeof firstSorter.column.getField === 'function' ? firstSorter.column.getField() : '');
-      if (!field) {
-        return;
-      }
-
-      params.set('sort.0.field', field);
-      params.set('sort.0.dir', firstSorter.dir);
+      (sorters || [])
+        .map(function (sorter) {
+          var field = sorter && (sorter.field || (sorter.column && typeof sorter.column.getField === 'function' ? sorter.column.getField() : ''));
+          var dir = sorter && sorter.dir;
+          return field && dir
+            ? { field: field, dir: dir }
+            : null;
+        })
+        .filter(function (sorter) {
+          return sorter !== null;
+        })
+        .forEach(function (sorter, sortIndex) {
+          params.set('sort.' + sortIndex + '.field', sorter.field);
+          params.set('sort.' + sortIndex + '.dir', sorter.dir);
+        });
     }
 
     var columns = (config.columns || []).map(function (column) {
