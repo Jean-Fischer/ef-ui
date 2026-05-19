@@ -24,7 +24,7 @@ Form behavior:
 List behavior:
 - every page includes breadcrumb navigation so you can move back to EF UI home, the current mount, and the current entity list
 - list state is URL-driven using `filter.N.field`, `filter.N.op`, `filter.N.value`, `sort.N.field`, `sort.N.dir`, `offset`, and `limit`
-- Tabulator header sorting and header filters own the visible list interactions
+- Tabulator header sorting and header filters own the single visible table surface
 - enhanced tables fetch JSON from `/<mount>/<entity>/data` and refresh rows in place instead of reloading the whole page
 - the enhanced grid updates the address bar with the current query state without full-page blink
 - the server owns filtering and sorting semantics and returns the authoritative result set for each query
@@ -32,7 +32,7 @@ List behavior:
 - FK display cells can render as links to the related row edit page
 - related-row links can open child tables with a visible pre-applied filter in the URL
 - list pages keep a server-rendered HTML table as fallback if the Tabulator enhancement is unavailable
-- the enhanced grid shows loading feedback in the grid area while it refreshes table data
+- the enhanced grid uses in-grid loading while it refreshes table data
 
 To verify the sample host in production mode:
 

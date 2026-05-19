@@ -318,7 +318,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         readme.Should().Contain("compact table status strip");
         readme.Should().Contain("related-row links can open child tables with a visible pre-applied filter in the URL");
         readme.Should().Contain("server-rendered HTML table as fallback");
-        readme.Should().Contain("loading feedback in the grid area");
+        readme.Should().Contain("in-grid loading while it refreshes table data");
     }
 
     [Fact]
