@@ -114,6 +114,21 @@ public class EntityMetadataProviderTests
     }
 
     [Fact]
+    public void GetEntity_exposes_scalar_foreign_key_without_navigation_as_reference_field()
+    {
+        using var db = CreateDisplayColumnDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var invoice = sut.GetEntity(db, "invoices");
+
+        var customerId = invoice.AllProperties.Single(property => property.Name == "CustomerId");
+        customerId.RelatedDisplayPropertyName.Should().Be("Name");
+        customerId.RelatedRouteName.Should().Be("customers");
+
+        invoice.UpdateEditableFields.Single(field => field.Name == "CustomerId").RelatedDisplayPropertyName.Should().Be("Name");
+    }
+
+    [Fact]
     public void GetEntities_skips_shared_join_entities_without_single_primary_keys()
     {
         using var db = CreateManyToManyDb();
@@ -192,6 +207,19 @@ public class EntityMetadataProviderTests
         discovery.Entities.Select(x => x.RouteName).Should().NotContain("reports");
         discovery.BlockingIssues("reports").Should().ContainSingle(issue =>
             issue.Message.Contains("no primary key", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void GetDiscoveryResult_reports_renderable_issues_for_shadow_foreign_keys_without_clr_navigation()
+    {
+        using var db = CreateShadowForeignKeyDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var discovery = sut.GetDiscoveryResult(db);
+
+        discovery.Entities.Select(x => x.RouteName).Should().Contain("shadow_notes");
+        discovery.RenderableIssues("shadow_notes").Should().ContainSingle(issue =>
+            issue.Message.Contains("cannot use the simple scalar fallback", StringComparison.OrdinalIgnoreCase));
     }
 
     private static SampleModelDbContext CreateDb()
@@ -285,6 +313,18 @@ public class EntityMetadataProviderTests
             .Options;
 
         var db = new DisplayColumnDbContext(options);
+        db.Database.OpenConnection();
+        db.Database.EnsureCreated();
+        return db;
+    }
+
+    private static ShadowForeignKeyDbContext CreateShadowForeignKeyDb()
+    {
+        var options = new DbContextOptionsBuilder<ShadowForeignKeyDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        var db = new ShadowForeignKeyDbContext(options);
         db.Database.OpenConnection();
         db.Database.EnsureCreated();
         return db;
@@ -390,6 +430,7 @@ public class EntityMetadataProviderTests
     private sealed class DisplayColumnDbContext(DbContextOptions<DisplayColumnDbContext> options) : DbContext(options)
     {
         public DbSet<Customer> Customers => Set<Customer>();
+        public DbSet<Invoice> Invoices => Set<Invoice>();
         public DbSet<OrderWithDisplayColumns> Orders => Set<OrderWithDisplayColumns>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -398,6 +439,15 @@ public class EntityMetadataProviderTests
             {
                 builder.ToTable("customers");
                 builder.HasKey(x => x.Id);
+            });
+
+            modelBuilder.Entity<Invoice>(builder =>
+            {
+                builder.ToTable("invoices");
+                builder.HasKey(x => x.Id);
+                builder.HasOne<Customer>()
+                    .WithMany()
+                    .HasForeignKey(x => x.CustomerId);
             });
 
             modelBuilder.Entity<OrderWithDisplayColumns>(builder =>
@@ -493,5 +543,44 @@ public class EntityMetadataProviderTests
         public Customer BillingCustomer { get; set; } = null!;
         public int ShippingCustomerId { get; set; }
         public Customer ShippingCustomer { get; set; } = null!;
+    }
+
+    private sealed class Invoice
+    {
+        public int Id { get; set; }
+        public string Number { get; set; } = string.Empty;
+        public int CustomerId { get; set; }
+    }
+
+    private sealed class ShadowForeignKeyDbContext(DbContextOptions<ShadowForeignKeyDbContext> options) : DbContext(options)
+    {
+        public DbSet<Customer> Customers => Set<Customer>();
+        public DbSet<ShadowNote> ShadowNotes => Set<ShadowNote>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Customer>(builder =>
+            {
+                builder.ToTable("customers");
+                builder.HasKey(x => x.Id);
+            });
+
+            modelBuilder.Entity<ShadowNote>(builder =>
+            {
+                builder.ToTable("shadow_notes");
+                builder.HasKey(x => x.Id);
+                builder.Property<int>("CustomerId");
+                builder.HasOne<Customer>()
+                    .WithMany()
+                    .HasForeignKey("CustomerId");
+            });
+        }
+    }
+
+    private sealed class ShadowNote
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Body { get; set; } = string.Empty;
     }
 }

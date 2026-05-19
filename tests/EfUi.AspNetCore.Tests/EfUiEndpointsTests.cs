@@ -34,6 +34,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         html.Should().Contain("/simple");
+        html.Should().Contain("/edge-cases");
         html.Should().Contain("/chinook");
     }
 
@@ -52,6 +53,24 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("<ul class=\"efui-index-list efui-link-grid\">");
         html.Should().Contain("/simple/users");
         html.Should().Contain("/simple/groups");
+    }
+
+    [Fact]
+    public async Task Get_edge_case_index_reports_supported_and_unsupported_entities()
+    {
+        var html = await _client.GetStringAsync("/edge-cases");
+
+        html.Should().Contain("/edge-cases/customers");
+        html.Should().Contain("/edge-cases/orders");
+        html.Should().Contain("/edge-cases/invoices");
+        html.Should().Contain("class=\"efui-warning-summary\"");
+        html.Should().Contain("class=\"efui-error-summary\"");
+        html.Should().Contain("is composite and is not supported yet");
+        html.Should().Contain("cannot use the simple scalar fallback");
+        html.Should().Contain("composite primary key");
+        html.Should().Contain("no primary key");
+        html.Should().NotContain("/edge-cases/memberships");
+        html.Should().NotContain("/edge-cases/reports");
     }
 
     [Fact]
@@ -193,6 +212,64 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         row.Should().Contain($"<td>{email}</td><td></td><td>True</td><td>Null Group User</td>");
         row.Should().NotContain("<td>Admins</td>");
         row.Should().NotContain("<td>Guests</td>");
+    }
+
+    [Fact]
+    public async Task Get_edge_case_invoice_page_uses_scalar_foreign_key_fallback_for_display_labels()
+    {
+        var html = await _client.GetStringAsync("/edge-cases/invoices");
+        var row = GetTableRowContainingValue(html, "INV-2001");
+
+        row.Should().Contain("<a class=\"efui-cell-link\" href=\"/edge-cases/customers/");
+        row.Should().Contain(">Alpha Corp<");
+        row.Should().Contain("INV-2001");
+    }
+
+    [Fact]
+    public async Task Get_edge_case_order_page_uses_fk_display_column_customization()
+    {
+        var html = await _client.GetStringAsync("/edge-cases/orders");
+        var row = GetTableRowContainingValue(html, "ORD-1001");
+
+        row.Should().Contain("<a class=\"efui-cell-link\" href=\"/edge-cases/customers/");
+        row.Should().Contain(">ALP<");
+        row.Should().Contain(">Beta Labs<");
+    }
+
+    [Fact]
+    public async Task Get_edge_case_composite_child_page_surfaces_warning_summary()
+    {
+        var html = await _client.GetStringAsync("/edge-cases/composite_children");
+
+        html.Should().Contain("class=\"efui-warning-summary\"");
+        html.Should().Contain("is composite and is not supported yet");
+        html.Should().Contain("Composite child 1");
+    }
+
+    [Fact]
+    public async Task Get_edge_case_shadow_note_page_surfaces_shadow_fk_warning_summary()
+    {
+        var html = await _client.GetStringAsync("/edge-cases/shadow_notes");
+
+        html.Should().Contain("class=\"efui-warning-summary\"");
+        html.Should().Contain("cannot use the simple scalar fallback");
+        html.Should().Contain("Shadow FK note");
+    }
+
+    [Fact]
+    public async Task Get_edge_case_blocked_entity_routes_render_error_pages()
+    {
+        var membershipResponse = await _client.GetAsync("/edge-cases/memberships");
+        var membershipHtml = await membershipResponse.Content.ReadAsStringAsync();
+        membershipResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        membershipHtml.Should().Contain("class=\"efui-error-summary\"");
+        membershipHtml.Should().Contain("composite primary key");
+
+        var reportResponse = await _client.GetAsync("/edge-cases/reports");
+        var reportHtml = await reportResponse.Content.ReadAsStringAsync();
+        reportResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        reportHtml.Should().Contain("class=\"efui-error-summary\"");
+        reportHtml.Should().Contain("no primary key");
     }
 
     [Fact]
