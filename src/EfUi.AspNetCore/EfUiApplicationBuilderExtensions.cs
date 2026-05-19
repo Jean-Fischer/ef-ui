@@ -73,12 +73,13 @@ public static class EfUiApplicationBuilderExtensions
         }
 
         var queryResult = BindTableQuery(request, metadata);
-        var rows = ReadRows(dbContext, metadata.ClrType);
+        var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata);
+        var rows = ApplyTableQuery(ReadRows(dbContext, metadata.ClrType), metadata, queryResult.Query, relatedValueLookups);
         var html = new HtmlPageRenderer().RenderList(
             options.RoutePrefix,
             metadata,
             new RenderedListView(
-                CreateRenderedListRows(dbContext, metadata, rows),
+                CreateRenderedListRows(metadata, rows, relatedValueLookups),
                 queryResult.Query.Filters.Select(filter => new RenderedListFilter(filter.Field, filter.Operator, filter.Value)).ToList(),
                 queryResult.Query.Sorts.Select(sort => new RenderedListSort(sort.Field, sort.Direction)).ToList(),
                 queryResult.Errors,
@@ -208,10 +209,11 @@ public static class EfUiApplicationBuilderExtensions
         }
 
         var rows = ReadRows(dbContext, metadata.ClrType);
+        var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata);
         var html = new HtmlPageRenderer().RenderList(
             options.RoutePrefix,
             metadata,
-            new RenderedListView(CreateRenderedListRows(dbContext, metadata, rows)));
+            new RenderedListView(CreateRenderedListRows(metadata, rows, relatedValueLookups)));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -283,7 +285,7 @@ public static class EfUiApplicationBuilderExtensions
                 continue;
             }
 
-            sorts.Add(new TableSortClause(field, direction));
+            sorts.Add(new TableSortClause(field, direction!));
         }
 
         return new BoundTableQuery(
@@ -348,10 +350,8 @@ public static class EfUiApplicationBuilderExtensions
         return queryable.Cast<object>().ToList();
     }
 
-    private static IReadOnlyList<RenderedListRow> CreateRenderedListRows(DbContext dbContext, EntityMetadata metadata, IReadOnlyList<object> rows)
+    private static IReadOnlyList<RenderedListRow> CreateRenderedListRows(EntityMetadata metadata, IReadOnlyList<object> rows, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
     {
-        var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata);
-
         return rows.Select(row => new RenderedListRow(
             FormatValue(row.GetType().GetProperty(metadata.PrimaryKeyProperty.Name)?.GetValue(row)),
             metadata.AllProperties.ToDictionary(
@@ -395,6 +395,49 @@ public static class EfUiApplicationBuilderExtensions
 
         return lookups;
     }
+
+    private static IReadOnlyList<object> ApplyTableQuery(IReadOnlyList<object> rows, EntityMetadata metadata, TableQuery query, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
+    {
+        IEnumerable<object> filteredRows = rows;
+
+        foreach (var filter in query.Filters)
+        {
+            var property = metadata.AllProperties.Single(candidate => candidate.Name == filter.Field);
+            filteredRows = filteredRows.Where(row => MatchesFilter(row, property, filter, relatedValueLookups));
+        }
+
+        IOrderedEnumerable<object>? orderedRows = null;
+        foreach (var sort in query.Sorts)
+        {
+            var property = metadata.AllProperties.Single(candidate => candidate.Name == sort.Field);
+            Func<object, string> keySelector = row => GetQueryDisplayValue(row, property, relatedValueLookups);
+            var descending = string.Equals(sort.Direction, "desc", StringComparison.OrdinalIgnoreCase);
+
+            orderedRows = orderedRows is null
+                ? descending
+                    ? filteredRows.OrderByDescending(keySelector, StringComparer.OrdinalIgnoreCase)
+                    : filteredRows.OrderBy(keySelector, StringComparer.OrdinalIgnoreCase)
+                : descending
+                    ? orderedRows.ThenByDescending(keySelector, StringComparer.OrdinalIgnoreCase)
+                    : orderedRows.ThenBy(keySelector, StringComparer.OrdinalIgnoreCase);
+        }
+
+        return (orderedRows ?? filteredRows).ToList();
+    }
+
+    private static bool MatchesFilter(object row, EntityPropertyMetadata property, TableFilterClause filter, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
+    {
+        var candidate = GetQueryDisplayValue(row, property, relatedValueLookups);
+        return filter.Operator.ToLowerInvariant() switch
+        {
+            "contains" => candidate.Contains(filter.Value ?? string.Empty, StringComparison.OrdinalIgnoreCase),
+            "eq" => string.Equals(candidate, filter.Value ?? string.Empty, StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
+    }
+
+    private static string GetQueryDisplayValue(object row, EntityPropertyMetadata property, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
+        => GetRenderedListCellValue(row, property.Name, relatedValueLookups);
 
     private static string GetRenderedListCellValue(object row, string propertyName, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
     {

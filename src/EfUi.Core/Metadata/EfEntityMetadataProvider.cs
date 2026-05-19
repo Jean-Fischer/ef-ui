@@ -51,6 +51,20 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             })
             .ToList();
 
+        scalarProperties = scalarProperties
+            .Select(property =>
+            {
+                var referenceField = referenceFields.SingleOrDefault(field => field.Property.Name == property.Name);
+                return referenceField is null
+                    ? property
+                    : property with
+                    {
+                        RelatedClrType = referenceField.RelatedClrType,
+                        RelatedRouteName = GetRouteName(referenceField.ForeignKey.PrincipalEntityType)
+                    };
+            })
+            .ToList();
+
         var suppressedScalarPropertyNames = referenceFields
             .Select(field => field.Property.Name)
             .ToHashSet(StringComparer.Ordinal);

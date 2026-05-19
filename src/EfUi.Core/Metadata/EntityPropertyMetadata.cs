@@ -5,4 +5,6 @@ public sealed record EntityPropertyMetadata(
     Type ClrType,
     bool IsEditableOnCreate,
     bool IsEditableOnUpdate,
-    bool IsPrimaryKey = false);
+    bool IsPrimaryKey = false,
+    Type? RelatedClrType = null,
+    string? RelatedRouteName = null);

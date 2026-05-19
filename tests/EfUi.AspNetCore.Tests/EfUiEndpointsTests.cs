@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
 using EfUi.SampleHost.Data;
+using SampleGroup = EfUi.SampleHost.Models.Group;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -143,6 +144,70 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("DropTable");
         html.Should().Contain("Unsupported sort direction");
         html.Should().Contain("sideways");
+    }
+
+    [Fact]
+    public async Task Get_entity_page_filters_rows_from_scalar_query_rules()
+    {
+        var includedEmail = $"filter-include-{Guid.NewGuid():N}@example.com";
+        var excludedEmail = $"filter-exclude-{Guid.NewGuid():N}@example.com";
+
+        await CreateUserAndGetIdAsync("Filter Included User", includedEmail);
+        await CreateUserAndGetIdAsync("Hidden User", excludedEmail);
+
+        var html = await _client.GetStringAsync("/simple/users?filter.0.field=Name&filter.0.op=contains&filter.0.value=Included");
+
+        html.Should().Contain(includedEmail);
+        html.Should().NotContain(excludedEmail);
+        html.Should().Contain("Name contains Included");
+    }
+
+    [Fact]
+    public async Task Get_entity_page_sorts_rows_from_scalar_query_rules()
+    {
+        var earlierEmail = $"sort-a-{Guid.NewGuid():N}@example.com";
+        var laterEmail = $"sort-z-{Guid.NewGuid():N}@example.com";
+
+        await CreateUserAndGetIdAsync("Sort A User", earlierEmail);
+        await CreateUserAndGetIdAsync("Sort Z User", laterEmail);
+
+        var html = await _client.GetStringAsync("/simple/users?sort.0.field=Email&sort.0.dir=desc");
+
+        html.IndexOf(laterEmail, StringComparison.Ordinal).Should().BeLessThan(html.IndexOf(earlierEmail, StringComparison.Ordinal));
+        html.Should().Contain("Email desc");
+    }
+
+    [Fact]
+    public async Task Get_entity_page_filters_fk_display_columns_by_label_semantics()
+    {
+        var adminsEmail = $"label-admins-{Guid.NewGuid():N}@example.com";
+        var guestsEmail = $"label-guests-{Guid.NewGuid():N}@example.com";
+
+        await CreateUserAndGetIdAsync("Label Admin User", adminsEmail, group: "1");
+        await CreateUserAndGetIdAsync("Label Guest User", guestsEmail, group: "2");
+
+        var html = await _client.GetStringAsync("/simple/users?filter.0.field=GroupId&filter.0.op=contains&filter.0.value=Guest");
+
+        html.Should().Contain(guestsEmail);
+        html.Should().NotContain(adminsEmail);
+        html.Should().Contain("GroupId contains Guest");
+    }
+
+    [Fact]
+    public async Task Get_entity_page_sorts_fk_display_columns_by_label_semantics()
+    {
+        var zuluGroupId = await CreateGroupAsync("Zulu Squad");
+        var alphaGroupId = await CreateGroupAsync("Alpha Squad");
+        var zuluEmail = $"label-zulu-{Guid.NewGuid():N}@example.com";
+        var alphaEmail = $"label-alpha-{Guid.NewGuid():N}@example.com";
+
+        await CreateUserAndGetIdAsync("Zulu User", zuluEmail, group: zuluGroupId.ToString());
+        await CreateUserAndGetIdAsync("Alpha User", alphaEmail, group: alphaGroupId.ToString());
+
+        var html = await _client.GetStringAsync("/simple/users?sort.0.field=GroupId&sort.0.dir=asc");
+
+        html.IndexOf(alphaEmail, StringComparison.Ordinal).Should().BeLessThan(html.IndexOf(zuluEmail, StringComparison.Ordinal));
+        html.Should().Contain("GroupId asc");
     }
 
     [Fact]
@@ -334,6 +399,16 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var response = await _client.PostAsync("/simple/users/999999/delete", new FormUrlEncodedContent(new Dictionary<string, string>()));
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    private async Task<int> CreateGroupAsync(string name)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SampleDbContext>();
+        var group = new SampleGroup { Name = name };
+        db.Groups.Add(group);
+        await db.SaveChangesAsync();
+        return group.Id;
     }
 
     private async Task<string> CreateUserAndGetIdAsync(string name, string email, string? group = "1")
