@@ -250,9 +250,12 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var readme = File.ReadAllText(readmePath);
 
         readme.Should().Contain("breadcrumb navigation");
+        readme.Should().Contain("filter.N.field");
+        readme.Should().Contain("sort.N.dir");
         readme.Should().Contain("Tabulator header sorting and header filters");
         readme.Should().Contain("server owns filtering and sorting semantics");
         readme.Should().Contain("compact table status strip");
+        readme.Should().Contain("related-row links can open child tables with a visible pre-applied filter in the URL");
         readme.Should().Contain("server-rendered HTML table as fallback");
         readme.Should().Contain("loading feedback in the grid area");
     }

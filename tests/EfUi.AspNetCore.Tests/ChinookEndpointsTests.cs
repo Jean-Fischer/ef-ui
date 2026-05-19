@@ -165,6 +165,9 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         invoiceIdColumn.GetProperty("filterOperator").GetString().Should().Be("contains");
         invoiceIdColumn.GetProperty("activeFilterOperator").GetString().Should().Be("eq");
         invoiceIdColumn.GetProperty("headerFilterValue").GetString().Should().Be("1");
+
+        html.Should().Contain("/chinook/invoices/1/edit");
+        html.Should().NotContain("/chinook/invoices/2/edit");
     }
 
     [Fact]
@@ -182,6 +185,9 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         html.Should().NotContain("class=\"efui-query-builder\"");
         Regex.IsMatch(html, @"<tbody>\s*<tr>", RegexOptions.Singleline).Should().BeTrue();
         html.Should().Contain("MPEG audio file");
+        html.Should().Contain("/chinook/media_types/1/edit");
+        html.Should().NotContain("/chinook/media_types/2/edit");
+        html.Should().NotContain("Protected AAC audio file");
 
         using var config = GetTableConfig(html);
         var root = config.RootElement;
