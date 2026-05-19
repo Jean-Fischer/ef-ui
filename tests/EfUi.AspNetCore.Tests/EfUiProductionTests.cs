@@ -10,13 +10,10 @@ namespace EfUi.AspNetCore.Tests;
 public sealed class EfUiProductionTests
 {
     [Fact]
-    public async Task Sample_host_serves_all_ui_mounts_in_production()
+    public async Task Sample_host_serves_the_open_mount_and_protects_chinook_in_production()
     {
         using var factory = new ProductionEfUiApplicationFactory();
-        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
-        {
-            AllowAutoRedirect = false
-        });
+        using var client = CreateClient(factory);
 
         var simpleResponse = await client.GetAsync("/simple");
         var simpleHtml = await simpleResponse.Content.ReadAsStringAsync();
@@ -24,7 +21,22 @@ public sealed class EfUiProductionTests
 
         simpleResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         simpleHtml.Should().Contain("EF UI");
+        chinookResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Authenticated_users_can_access_the_protected_chinook_mount_in_production()
+    {
+        using var factory = new ProductionEfUiApplicationFactory();
+        using var client = CreateClient(factory);
+
+        await AuthenticateAsync(client, "Edit");
+
+        var chinookResponse = await client.GetAsync("/chinook");
+        var chinookHtml = await chinookResponse.Content.ReadAsStringAsync();
+
         chinookResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        chinookHtml.Should().Contain("Chinook");
     }
 
     [Fact]
@@ -64,10 +76,7 @@ public sealed class EfUiProductionTests
         {
             var tasks = factories.Select(async factory =>
             {
-                using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
-                {
-                    AllowAutoRedirect = false
-                });
+                using var client = CreateClient(factory);
 
                 var response = await client.GetAsync("/simple");
                 response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -82,5 +91,23 @@ public sealed class EfUiProductionTests
                 factory.Dispose();
             }
         }
+    }
+
+    private static HttpClient CreateClient(WebApplicationFactory<Program> factory)
+        => factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+    private static async Task AuthenticateAsync(HttpClient client, string role)
+    {
+        var endpoint = role.Equals("Edit", StringComparison.OrdinalIgnoreCase)
+            ? "/auth/edit"
+            : "/auth/readonly";
+
+        var response = await client.PostAsync(endpoint, new FormUrlEncodedContent(Array.Empty<KeyValuePair<string, string>>()));
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
+        response.Headers.Location.Should().NotBeNull();
+        response.Headers.Location!.ToString().Should().Be("/");
     }
 }
