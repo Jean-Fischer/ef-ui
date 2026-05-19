@@ -172,7 +172,6 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     private static void RenderTableEnhancementShell(StringBuilder html, string routePrefix, EntityMetadata entity, RenderedListView view)
     {
         html.Append("<section class=\"efui-table-enhancement\" data-role=\"efui-table-enhancement\">");
-        html.Append("<div class=\"efui-table-loading\" data-role=\"efui-table-loading\" hidden aria-live=\"polite\">Loading table…</div>");
         html.Append("<div class=\"efui-table-host\" data-role=\"efui-table-host\"></div>");
         html.Append("<script type=\"application/json\" data-role=\"efui-table-config\">");
         html.Append(RenderedListPayloadFactory.Serialize(routePrefix, entity, view));

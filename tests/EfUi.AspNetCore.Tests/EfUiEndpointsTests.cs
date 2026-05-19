@@ -70,7 +70,8 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         css.Should().Contain(".tabulator .tabulator-header");
         css.Should().Contain(".tabulator .tabulator-header .tabulator-col.tabulator-sortable");
         css.Should().Contain(".tabulator .tabulator-header .tabulator-header-filter input");
-        css.Should().Contain(".efui-table-loading");
+        css.Should().NotContain(".efui-table-loading");
+        css.Should().NotContain(".efui-table-host-loading");
     }
 
     [Fact]
@@ -100,6 +101,9 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().Contain("clearTimeout");
         script.Should().Contain("setTimeout");
         script.Should().Contain("dataLoaderLoading");
+        script.Should().NotContain("setLoading(");
+        script.Should().NotContain("efui-table-host-loading");
+        script.Should().NotContain("data-role=\"efui-table-loading\"");
         script.Should().Contain("headerSort: column.headerSort !== false");
         script.Should().Contain("headerFilter: column.headerFilter");
         script.Should().Contain("clearIndexedQuery");
@@ -125,7 +129,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().Contain("Unable to load table.");
         script.Should().Contain("await applyPayload(config);");
         css.Should().Contain(".efui-table-enhancement");
-        css.Should().Contain(".efui-table-loading");
+        css.Should().NotContain(".efui-table-loading");
         css.Should().Contain(".efui-tabulator-loader");
     }
 
@@ -225,7 +229,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("src=\"/simple/assets/efui-table.js\"");
         html.Should().Contain("data-role=\"efui-table-enhancement\"");
         html.Should().Contain("data-role=\"efui-table-config\"");
-        html.Should().Contain("data-role=\"efui-table-loading\"");
+        html.Should().NotContain("data-role=\"efui-table-loading\"");
         html.Should().Contain("data-role=\"efui-table-fallback\"");
         html.Should().Contain("\"library\":\"tabulator\"");
         html.Should().Contain("\"field\":\"__actions\"");

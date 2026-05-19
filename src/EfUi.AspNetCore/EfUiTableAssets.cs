@@ -11,24 +11,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var configElement = container.querySelector('[data-role="efui-table-config"]');
     var host = container.querySelector('[data-role="efui-table-host"]');
-    var loading = container.querySelector('[data-role="efui-table-loading"]');
     var surface = container.closest('.efui-surface') || document;
     var fallback = surface.querySelector('[data-role="efui-table-fallback"]');
     var statusHost = surface.querySelector('[data-role="efui-table-status"]');
     if (!(configElement instanceof HTMLScriptElement) || !(host instanceof HTMLElement)) {
       return;
-    }
-
-    function setLoading(isLoading, message) {
-      host.classList.toggle('efui-table-host-loading', isLoading);
-      if (!(loading instanceof HTMLElement)) {
-        return;
-      }
-
-      loading.hidden = !isLoading;
-      if (message) {
-        loading.textContent = message;
-      }
     }
 
     function clearIndexedQuery(params, prefix, suffixes) {
@@ -328,7 +315,6 @@ document.addEventListener('DOMContentLoaded', function () {
         renderStatus(config.status);
       } finally {
         applyingResponse = false;
-        setLoading(false, '');
       }
     }
 
@@ -336,8 +322,6 @@ document.addEventListener('DOMContentLoaded', function () {
       var query = params.toString();
       var requestUrl = dataUrl + (query ? '?' + query : '');
       var requestId = ++pendingRequestId;
-
-      setLoading(true, 'Loading table…');
 
       try {
         var response = await fetch(requestUrl, {
@@ -365,7 +349,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         await applyPayload(config);
-        setLoading(false, 'Unable to load table.');
       }
     }
 
@@ -380,8 +363,6 @@ document.addEventListener('DOMContentLoaded', function () {
         replaceHistory: !options || options.replaceHistory !== false
       });
     }
-
-    setLoading(true, 'Loading table…');
 
     var table = new window.Tabulator(host, {
       data: config.rows || [],
@@ -438,7 +419,6 @@ document.addEventListener('DOMContentLoaded', function () {
     window.setTimeout(function () {
       readyForNavigation = true;
       renderStatus(config.status);
-      setLoading(false, '');
       container.classList.add('efui-table-enhancement-ready');
       if (fallback instanceof HTMLElement) {
         fallback.classList.add('efui-table-fallback-hidden');
@@ -456,16 +436,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
 .efui-table-host {
   min-height: 12rem;
-}
-
-.efui-table-loading {
-  margin-bottom: 0.75rem;
-  padding: 0.75rem 0.875rem;
-  border: 1px solid #bfdbfe;
-  border-radius: 0.625rem;
-  background: #eff6ff;
-  color: #1d4ed8;
-  font-weight: 600;
 }
 
 .efui-tabulator-loader {

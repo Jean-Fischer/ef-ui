@@ -111,7 +111,7 @@ public class HtmlPageRendererTests
         html.Should().NotContain("class=\"efui-query-builder\"");
         html.Should().NotContain("efui-query-builder-form");
         html.Should().NotContain("data-role=\"efui-query-form\"");
-        html.Should().Contain("data-role=\"efui-table-loading\"");
+        html.Should().NotContain("data-role=\"efui-table-loading\"");
         html.Should().Contain("<div class=\"efui-table-wrapper\" data-role=\"efui-table-fallback\">");
         html.Should().Contain("<table class=\"efui-table\">");
         html.Should().Contain("<td class=\"efui-row-actions\">");

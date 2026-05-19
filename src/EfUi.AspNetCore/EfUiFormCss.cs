@@ -166,20 +166,6 @@ internal static class EfUiFormCss
   min-height: 12rem;
 }
 
-.efui-table-host-loading {
-  opacity: 0.88;
-}
-
-.efui-table-loading {
-  margin-bottom: 0.75rem;
-  padding: 0.75rem 0.875rem;
-  border: 1px solid #bfdbfe;
-  border-radius: 0.625rem;
-  background: #eff6ff;
-  color: #1d4ed8;
-  font-weight: 600;
-}
-
 .tabulator {
   border: 1px solid #e5e7eb;
   border-radius: 0.75rem;
