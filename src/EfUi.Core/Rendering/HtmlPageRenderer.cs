@@ -11,6 +11,10 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     {
         var html = new StringBuilder();
         AppendDocumentStart(html, routePrefix, "efui-page");
+        RenderBreadcrumbs(html, [
+            new BreadcrumbItem("EF UI", "/"),
+            new BreadcrumbItem(GetMountDisplayName(routePrefix))
+        ]);
         html.Append("<section class=\"efui-surface\">");
         html.Append("<h1>EF UI</h1>");
         html.Append("<ul class=\"efui-index-list efui-link-grid\">");
@@ -28,12 +32,17 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     {
         var html = new StringBuilder();
         AppendDocumentStart(html, routePrefix, "efui-page", BuildTableEnhancementHead(routePrefix));
+        RenderBreadcrumbs(html, [
+            new BreadcrumbItem("EF UI", "/"),
+            new BreadcrumbItem(GetMountDisplayName(routePrefix), routePrefix),
+            new BreadcrumbItem(entity.DisplayName)
+        ]);
         html.Append("<section class=\"efui-surface\">");
         html.Append($"<h1>{WebUtility.HtmlEncode(entity.DisplayName)}</h1>");
         html.Append("<div class=\"efui-page-actions\">");
         html.Append($"<a class=\"efui-primary-link\" href=\"{routePrefix}/{entity.RouteName}/new\">Create New</a>");
         html.Append("</div>");
-        RenderQueryBuilder(html, routePrefix, entity, view);
+        RenderTableStatus(html, view);
         RenderTableEnhancementShell(html, routePrefix, entity, view);
         html.Append("<div class=\"efui-table-wrapper\" data-role=\"efui-table-fallback\">");
         html.Append("<table class=\"efui-table\"><thead><tr>");
@@ -69,13 +78,9 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     public string RenderForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
         => RenderEditForm(routePrefix, entity, model, isCreate, errors, null, submittedValues, fieldOptions);
 
-    private static void RenderQueryBuilder(StringBuilder html, string routePrefix, EntityMetadata entity, RenderedListView view)
+    private static void RenderTableStatus(StringBuilder html, RenderedListView view)
     {
-        var action = $"{routePrefix}/{entity.RouteName}";
-        var activeFilter = view.Filters.FirstOrDefault();
-        var activeSort = view.Sorts.FirstOrDefault();
-
-        html.Append($"<section class=\"efui-query-builder\" data-offset=\"{view.Offset}\" data-limit=\"{view.Limit}\">");
+        html.Append($"<section class=\"efui-table-status\" data-offset=\"{view.Offset}\" data-limit=\"{view.Limit}\">");
 
         if (view.Errors.Count > 0)
         {
@@ -88,101 +93,66 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             html.Append("</div>");
         }
 
-        html.Append($"<form class=\"efui-query-builder-form\" method=\"get\" action=\"{action}\" data-role=\"efui-query-form\">");
-        html.Append("<div class=\"efui-query-builder-controls\">");
-        html.Append("<label class=\"efui-query-builder-field\"><span class=\"efui-label\">Filter field</span>");
-        RenderQueryFieldSelect(html, "filter.0.field", entity, activeFilter?.Field, includeEmptyOption: true);
-        html.Append("</label>");
-        html.Append("<label class=\"efui-query-builder-field\"><span class=\"efui-label\">Operator</span>");
-        RenderQueryOperatorSelect(html, activeFilter?.Operator);
-        html.Append("</label>");
-        html.Append($"<label class=\"efui-query-builder-field efui-query-builder-value\"><span class=\"efui-label\">Value</span><input class=\"efui-input\" name=\"filter.0.value\" value=\"{WebUtility.HtmlEncode(activeFilter?.Value ?? string.Empty)}\" /></label>");
-        html.Append("<label class=\"efui-query-builder-field\"><span class=\"efui-label\">Sort field</span>");
-        RenderQueryFieldSelect(html, "sort.0.field", entity, activeSort?.Field, includeEmptyOption: true);
-        html.Append("</label>");
-        html.Append("<label class=\"efui-query-builder-field\"><span class=\"efui-label\">Direction</span>");
-        RenderSortDirectionSelect(html, activeSort?.Direction);
-        html.Append("</label>");
-        html.Append($"<input type=\"hidden\" name=\"offset\" value=\"0\" />");
-        html.Append($"<input type=\"hidden\" name=\"limit\" value=\"{view.Limit}\" />");
-        html.Append("</div>");
-        html.Append("<div class=\"efui-query-builder-actions\">");
-        html.Append("<button class=\"efui-button\" type=\"submit\">Apply</button>");
-        html.Append($"<a class=\"efui-query-builder-clear\" href=\"{action}\">Clear</a>");
-        html.Append("</div></form>");
-
-        html.Append("<div class=\"efui-query-builder-group\"><h2>Filters</h2>");
-        if (view.Filters.Count == 0)
+        if (view.Filters.Count == 0 && view.Sorts.Count == 0)
         {
-            html.Append("<div class=\"efui-query-builder-empty\">No filters</div>");
-        }
-        else
-        {
-            foreach (var filter in view.Filters)
-            {
-                html.Append($"<div class=\"efui-query-builder-filter\">{WebUtility.HtmlEncode(filter.Field)} {WebUtility.HtmlEncode(filter.Operator)} {WebUtility.HtmlEncode(filter.Value ?? string.Empty)}</div>");
-            }
+            html.Append("<div class=\"efui-table-status-empty\">No active filters or sorts</div>");
+            html.Append("</section>");
+            return;
         }
 
-        html.Append("</div>");
-        html.Append("<div class=\"efui-query-builder-group\"><h2>Sorts</h2>");
-        if (view.Sorts.Count == 0)
+        html.Append("<div class=\"efui-table-status-items\">");
+        foreach (var filter in view.Filters)
         {
-            html.Append("<div class=\"efui-query-builder-empty\">No sorts</div>");
+            html.Append($"<div class=\"efui-table-status-item\">{WebUtility.HtmlEncode(filter.Field)} {WebUtility.HtmlEncode(filter.Operator)} {WebUtility.HtmlEncode(filter.Value ?? string.Empty)}</div>");
         }
-        else
+
+        foreach (var sort in view.Sorts)
         {
-            foreach (var sort in view.Sorts)
-            {
-                html.Append($"<div class=\"efui-query-builder-sort\">{WebUtility.HtmlEncode(sort.Field)} {WebUtility.HtmlEncode(sort.Direction)}</div>");
-            }
+            html.Append($"<div class=\"efui-table-status-item\">{WebUtility.HtmlEncode(sort.Field)} {WebUtility.HtmlEncode(sort.Direction)}</div>");
         }
 
         html.Append("</div></section>");
     }
 
-    private static void RenderQueryFieldSelect(StringBuilder html, string name, EntityMetadata entity, string? selectedValue, bool includeEmptyOption)
+    private static void RenderBreadcrumbs(StringBuilder html, IReadOnlyList<BreadcrumbItem> items)
     {
-        html.Append($"<select class=\"efui-select\" name=\"{name}\">");
-        if (includeEmptyOption)
+        html.Append("<nav class=\"efui-breadcrumbs\" aria-label=\"Breadcrumb\"><ol class=\"efui-breadcrumb-list\">");
+        for (var index = 0; index < items.Count; index++)
         {
-            html.Append("<option value=\"\"></option>");
+            var item = items[index];
+            var isCurrent = index == items.Count - 1 || string.IsNullOrWhiteSpace(item.Href);
+            html.Append("<li class=\"efui-breadcrumb-item\">");
+            if (isCurrent)
+            {
+                html.Append($"<span class=\"efui-breadcrumb-current\">{WebUtility.HtmlEncode(item.Label)}</span>");
+            }
+            else
+            {
+                html.Append($"<a class=\"efui-breadcrumb-link\" href=\"{item.Href}\">{WebUtility.HtmlEncode(item.Label)}</a>");
+            }
+
+            html.Append("</li>");
         }
 
-        foreach (var property in entity.AllProperties)
-        {
-            var selected = string.Equals(property.Name, selectedValue, StringComparison.Ordinal) ? " selected" : string.Empty;
-            html.Append($"<option value=\"{WebUtility.HtmlEncode(property.Name)}\"{selected}>{WebUtility.HtmlEncode(property.Name)}</option>");
-        }
-
-        html.Append("</select>");
+        html.Append("</ol></nav>");
     }
 
-    private static void RenderQueryOperatorSelect(StringBuilder html, string? selectedValue)
+    private static string GetMountDisplayName(string routePrefix)
     {
-        html.Append("<select class=\"efui-select\" name=\"filter.0.op\">");
-        html.Append("<option value=\"\"></option>");
-        foreach (var op in new[] { "contains", "eq" })
+        var segment = routePrefix.Trim('/');
+        if (string.IsNullOrWhiteSpace(segment))
         {
-            var selected = string.Equals(op, selectedValue, StringComparison.OrdinalIgnoreCase) ? " selected" : string.Empty;
-            html.Append($"<option value=\"{op}\"{selected}>{op}</option>");
+            return "EF UI";
         }
 
-        html.Append("</select>");
+        var words = segment
+            .Split(['-', '_'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(word => char.ToUpperInvariant(word[0]) + word[1..].ToLowerInvariant());
+
+        return string.Join(' ', words);
     }
 
-    private static void RenderSortDirectionSelect(StringBuilder html, string? selectedValue)
-    {
-        html.Append("<select class=\"efui-select\" name=\"sort.0.dir\">");
-        html.Append("<option value=\"\"></option>");
-        foreach (var direction in new[] { "asc", "desc" })
-        {
-            var selected = string.Equals(direction, selectedValue, StringComparison.OrdinalIgnoreCase) ? " selected" : string.Empty;
-            html.Append($"<option value=\"{direction}\"{selected}>{direction}</option>");
-        }
-
-        html.Append("</select>");
-    }
+    private sealed record BreadcrumbItem(string Label, string? Href = null);
 
     private static void RenderListCell(StringBuilder html, RenderedListCell? value)
     {
@@ -254,6 +224,12 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
         var html = new StringBuilder();
         AppendDocumentStart(html, routePrefix, "efui-form-page");
+        RenderBreadcrumbs(html, [
+            new BreadcrumbItem("EF UI", "/"),
+            new BreadcrumbItem(GetMountDisplayName(routePrefix), routePrefix),
+            new BreadcrumbItem(entity.DisplayName, $"{routePrefix}/{entity.RouteName}"),
+            new BreadcrumbItem(isCreate ? "New" : "Edit")
+        ]);
         html.Append($"<form class=\"efui-form\" method=\"post\" action=\"{action}\">");
         html.Append($"<h1 class=\"efui-form-title\">{WebUtility.HtmlEncode(entity.DisplayName)}</h1>");
 

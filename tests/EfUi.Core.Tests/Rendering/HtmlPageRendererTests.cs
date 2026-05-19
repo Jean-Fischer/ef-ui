@@ -24,7 +24,7 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
-    public void RenderIndex_includes_theme_stylesheet_and_semantic_shell()
+    public void RenderIndex_includes_theme_stylesheet_semantic_shell_and_breadcrumbs()
     {
         var sut = new HtmlPageRenderer();
         var entities = new[]
@@ -37,12 +37,14 @@ public class HtmlPageRendererTests
         html.Should().Contain("href=\"/efui/assets/efui.css\"");
         html.Should().Contain("class=\"efui-body\"");
         html.Should().Contain("<main class=\"efui-page\">");
+        html.Should().Contain("<nav class=\"efui-breadcrumbs\" aria-label=\"Breadcrumb\">");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/\">EF UI</a>");
         html.Should().Contain("<section class=\"efui-surface\">");
         html.Should().Contain("<ul class=\"efui-index-list efui-link-grid\">");
     }
 
     [Fact]
-    public void RenderList_includes_theme_stylesheet_query_builder_and_semantic_table_classes()
+    public void RenderList_includes_breadcrumbs_table_status_and_semantic_table_classes()
     {
         var sut = new HtmlPageRenderer();
         var metadata = new EntityMetadata(
@@ -81,18 +83,19 @@ public class HtmlPageRendererTests
         html.Should().Contain("href=\"/efui/assets/efui.css\"");
         html.Should().Contain("class=\"efui-body\"");
         html.Should().Contain("<main class=\"efui-page\">");
+        html.Should().Contain("<nav class=\"efui-breadcrumbs\" aria-label=\"Breadcrumb\">");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/\">EF UI</a>");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/efui\">Efui</a>");
+        html.Should().Contain("<span class=\"efui-breadcrumb-current\">User</span>");
         html.Should().Contain("<section class=\"efui-surface\">");
         html.Should().Contain("<div class=\"efui-page-actions\">");
         html.Should().Contain("<a class=\"efui-primary-link\" href=\"/efui/users/new\">Create New</a>");
-        html.Should().Contain("class=\"efui-query-builder\"");
-        html.Should().Contain("<form class=\"efui-query-builder-form\" method=\"get\" action=\"/efui/users\"");
-        html.Should().Contain("name=\"filter.0.field\"");
-        html.Should().Contain("name=\"filter.0.op\"");
-        html.Should().Contain("name=\"filter.0.value\"");
-        html.Should().Contain("name=\"sort.0.field\"");
-        html.Should().Contain("name=\"sort.0.dir\"");
+        html.Should().Contain("<section class=\"efui-table-status\"");
         html.Should().Contain("Name contains Ada");
         html.Should().Contain("Name asc");
+        html.Should().NotContain("class=\"efui-query-builder\"");
+        html.Should().NotContain("efui-query-builder-form");
+        html.Should().NotContain("data-role=\"efui-query-form\"");
         html.Should().Contain("data-role=\"efui-table-loading\"");
         html.Should().Contain("<div class=\"efui-table-wrapper\" data-role=\"efui-table-fallback\">");
         html.Should().Contain("<table class=\"efui-table\">");
@@ -292,7 +295,7 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
-    public void RenderEditForm_includes_form_theme_stylesheet_and_semantic_classes()
+    public void RenderEditForm_includes_form_theme_stylesheet_semantic_classes_and_breadcrumbs()
     {
         var sut = new HtmlPageRenderer();
         var metadata = new EntityMetadata(
@@ -327,6 +330,11 @@ public class HtmlPageRendererTests
             key: 7);
 
         html.Should().Contain("href=\"/efui/assets/efui.css\"");
+        html.Should().Contain("<nav class=\"efui-breadcrumbs\" aria-label=\"Breadcrumb\">");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/\">EF UI</a>");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/efui\">Efui</a>");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/efui/users\">User</a>");
+        html.Should().Contain("<span class=\"efui-breadcrumb-current\">Edit</span>");
         html.Should().Contain("class=\"efui-form\"");
         html.Should().Contain("class=\"efui-field\"");
         html.Should().Contain("class=\"efui-label\"");

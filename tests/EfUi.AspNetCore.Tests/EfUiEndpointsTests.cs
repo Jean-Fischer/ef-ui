@@ -36,13 +36,16 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
-    public async Task Get_index_returns_entity_links_with_themed_shell()
+    public async Task Get_index_returns_entity_links_with_themed_shell_and_breadcrumbs()
     {
         var html = await _client.GetStringAsync("/simple");
 
         html.Should().Contain("href=\"/simple/assets/efui.css\"");
         html.Should().Contain("class=\"efui-body\"");
         html.Should().Contain("<main class=\"efui-page\">");
+        html.Should().Contain("<nav class=\"efui-breadcrumbs\" aria-label=\"Breadcrumb\">");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/\">EF UI</a>");
+        html.Should().Contain("<span class=\"efui-breadcrumb-current\">Simple</span>");
         html.Should().Contain("<section class=\"efui-surface\">");
         html.Should().Contain("<ul class=\"efui-index-list efui-link-grid\">");
         html.Should().Contain("/simple/users");
@@ -139,21 +142,20 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
-    public async Task Get_entity_page_renders_active_query_builder_state_from_url()
+    public async Task Get_entity_page_renders_active_query_state_from_url_in_compact_status_area()
     {
         var html = await _client.GetStringAsync("/simple/users?filter.0.field=Name&filter.0.op=contains&filter.0.value=Ada&sort.0.field=Email&sort.0.dir=desc&offset=0&limit=25");
 
-        html.Should().Contain("class=\"efui-query-builder\"");
-        html.Should().Contain("<form class=\"efui-query-builder-form\" method=\"get\" action=\"/simple/users\"");
-        html.Should().Contain("name=\"filter.0.field\"");
-        html.Should().Contain("name=\"filter.0.op\"");
-        html.Should().Contain("name=\"filter.0.value\"");
-        html.Should().Contain("name=\"sort.0.field\"");
-        html.Should().Contain("name=\"sort.0.dir\"");
+        html.Should().Contain("<nav class=\"efui-breadcrumbs\" aria-label=\"Breadcrumb\">");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/\">EF UI</a>");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/simple\">Simple</a>");
+        html.Should().Contain("<span class=\"efui-breadcrumb-current\">User</span>");
+        html.Should().Contain("class=\"efui-table-status\"");
         html.Should().Contain("Name contains Ada");
         html.Should().Contain("Email desc");
-        html.Should().Contain("data-offset=\"0\"");
-        html.Should().Contain("data-limit=\"25\"");
+        html.Should().NotContain("class=\"efui-query-builder\"");
+        html.Should().NotContain("efui-query-builder-form");
+        html.Should().NotContain("data-role=\"efui-query-form\"");
         html.Should().Contain("href=\"/simple/assets/efui-table.css\"");
         html.Should().Contain("src=\"/simple/assets/efui-table.js\"");
         html.Should().Contain("data-role=\"efui-table-enhancement\"");
@@ -241,10 +243,15 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
-    public async Task Get_new_form_renders_only_editable_fields()
+    public async Task Get_new_form_renders_only_editable_fields_and_breadcrumbs()
     {
         var html = await _client.GetStringAsync("/simple/users/new");
 
+        html.Should().Contain("<nav class=\"efui-breadcrumbs\" aria-label=\"Breadcrumb\">");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/\">EF UI</a>");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/simple\">Simple</a>");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/simple/users\">User</a>");
+        html.Should().Contain("<span class=\"efui-breadcrumb-current\">New</span>");
         html.Should().Contain("name=\"Name\"");
         html.Should().NotContain("name=\"Id\"");
     }
@@ -258,13 +265,18 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
-    public async Task Get_edit_form_for_existing_row_renders_current_values()
+    public async Task Get_edit_form_for_existing_row_renders_current_values_and_breadcrumbs()
     {
         var email = $"edit-{Guid.NewGuid():N}@example.com";
         var id = await CreateUserAndGetIdAsync("Edit Me", email);
 
         var html = await _client.GetStringAsync($"/simple/users/{id}/edit");
 
+        html.Should().Contain("<nav class=\"efui-breadcrumbs\" aria-label=\"Breadcrumb\">");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/\">EF UI</a>");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/simple\">Simple</a>");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/simple/users\">User</a>");
+        html.Should().Contain("<span class=\"efui-breadcrumb-current\">Edit</span>");
         html.Should().Contain($"action=\"/simple/users/{id}\"");
         html.Should().Contain("name=\"Name\" value=\"Edit Me\"");
         html.Should().Contain($"name=\"Email\" value=\"{email}\"");

@@ -19,12 +19,15 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     }
 
     [Fact]
-    public async Task Get_chinook_index_returns_entity_links_with_themed_shell()
+    public async Task Get_chinook_index_returns_entity_links_with_themed_shell_and_breadcrumbs()
     {
         var html = await _client.GetStringAsync("/chinook");
 
         html.Should().Contain("href=\"/chinook/assets/efui.css\"");
         html.Should().Contain("<main class=\"efui-page\">");
+        html.Should().Contain("<nav class=\"efui-breadcrumbs\" aria-label=\"Breadcrumb\">");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/\">EF UI</a>");
+        html.Should().Contain("<span class=\"efui-breadcrumb-current\">Chinook</span>");
         html.Should().Contain("<section class=\"efui-surface\">");
         html.Should().Contain("<ul class=\"efui-index-list efui-link-grid\">");
         html.Should().Contain("/chinook/genres");
@@ -148,7 +151,8 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         var html = await _client.GetStringAsync("/chinook/invoice_items?filter.0.field=InvoiceId&filter.0.op=eq&filter.0.value=1");
 
         html.Should().Contain("InvoiceId eq 1");
-        html.Should().Contain("class=\"efui-query-builder\"");
+        html.Should().Contain("class=\"efui-table-status\"");
+        html.Should().NotContain("class=\"efui-query-builder\"");
     }
 
     [Fact]
@@ -156,7 +160,13 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     {
         var html = await _client.GetStringAsync("/chinook/tracks?filter.0.field=MediaTypeId&filter.0.op=eq&filter.0.value=1");
 
+        html.Should().Contain("<nav class=\"efui-breadcrumbs\" aria-label=\"Breadcrumb\">");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/\">EF UI</a>");
+        html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/chinook\">Chinook</a>");
+        html.Should().Contain("<span class=\"efui-breadcrumb-current\">Track</span>");
         html.Should().Contain("MediaTypeId eq 1");
+        html.Should().Contain("class=\"efui-table-status\"");
+        html.Should().NotContain("class=\"efui-query-builder\"");
         Regex.IsMatch(html, @"<tbody>\s*<tr>", RegexOptions.Singleline).Should().BeTrue();
         html.Should().Contain("MPEG audio file");
     }
