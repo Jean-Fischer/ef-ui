@@ -163,6 +163,14 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    function readActiveHeaderFilters(table) {
+      if (!table || typeof table.getHeaderFilters !== 'function') {
+        return [];
+      }
+
+      return table.getHeaderFilters();
+    }
+
     var columns = (config.columns || []).map(function (column) {
       var isActionsColumn = column.field === '__actions';
 
@@ -235,7 +243,7 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     });
 
-    table.on('dataFiltering', function (filters) {
+    table.on('dataFiltered', function () {
       if (!readyForNavigation) {
         return;
       }
@@ -243,7 +251,7 @@ document.addEventListener('DOMContentLoaded', function () {
       clearTimeout(filterNavigationHandle);
       filterNavigationHandle = setTimeout(function () {
         navigate(listUrl, function (params) {
-          applyFilterQuery(params, filters);
+          applyFilterQuery(params, readActiveHeaderFilters(table));
         });
       }, 400);
     });

@@ -87,7 +87,9 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().Contain("initialHeaderFilter");
         script.Should().Contain("headerFilterLiveFilterDelay");
         script.Should().Contain("dataSorting");
-        script.Should().Contain("dataFiltering");
+        script.Should().Contain("dataFiltered");
+        script.Should().Contain("readActiveHeaderFilters(table)");
+        script.Should().Contain("table.getHeaderFilters()");
         script.Should().Contain("clearTimeout");
         script.Should().Contain("setTimeout");
         script.Should().Contain("dataLoaderLoading");
@@ -107,6 +109,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().Contain("sortIndex");
         script.Should().NotContain("firstFilter");
         script.Should().NotContain("firstSorter");
+        script.Should().NotContain("table.on('dataFiltering'");
         script.Should().NotContain("headerClick:");
         script.Should().NotContain("title += ' ↑'");
         script.Should().NotContain("efui-query-form");
