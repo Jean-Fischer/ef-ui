@@ -56,13 +56,9 @@ document.addEventListener('DOMContentLoaded', function () {
       return value === null || value === undefined || String(value).trim() === '';
     }
 
-    function navigate(listUrl, mutator) {
-      var params = new URLSearchParams(window.location.search);
-      mutator(params);
-      params.set('offset', '0');
-      setLoading(true, 'Loading table…');
+    function replaceBrowserUrl(targetListUrl, params) {
       var query = params.toString();
-      window.location.assign(listUrl + (query ? '?' + query : ''));
+      window.history.replaceState({}, '', targetListUrl + (query ? '?' + query : ''));
     }
 
     var config;
@@ -77,14 +73,33 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     var listUrl = config.listUrl || window.location.pathname;
+    var dataUrl = config.dataUrl || (listUrl + '/data');
     var columnMap = {};
-    (config.columns || []).forEach(function (column) {
-      if (column && column.field) {
-        columnMap[column.field] = column;
-      }
-    });
+    var filterNavigationHandle = 0;
+    var readyForNavigation = false;
+    var applyingResponse = false;
+    var pendingRequestId = 0;
+    var currentSorters = readQuerySortState(config.query && config.query.sorts);
+
+    function rebuildColumnMap(columns) {
+      columnMap = {};
+      (columns || []).forEach(function (column) {
+        if (column && column.field) {
+          columnMap[column.field] = column;
+        }
+      });
+    }
+
+    rebuildColumnMap(config.columns);
 
     function readInitialSort(sorts) {
+      return readQuerySortState(sorts)
+        .map(function (sort) {
+          return { column: sort.field, dir: sort.dir };
+        });
+    }
+
+    function readQuerySortState(sorts) {
       return (sorts || [])
         .map(function (sort) {
           var field = sort.field || sort.Field || '';
@@ -93,7 +108,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return null;
           }
 
-          return { column: field, dir: direction };
+          return { field: field, dir: direction };
         })
         .filter(function (sort) { return sort !== null; });
     }
@@ -171,58 +186,129 @@ document.addEventListener('DOMContentLoaded', function () {
       return table.getHeaderFilters();
     }
 
-    var columns = (config.columns || []).map(function (column) {
-      var isActionsColumn = column.field === '__actions';
-
+    function readTableState(table, sorters) {
       return {
-        title: column.title || column.field || '',
-        field: column.field,
-        headerSort: column.headerSort !== false,
-        headerSortTristate: column.headerSort !== false,
-        headerFilter: column.headerFilter === false ? false : column.headerFilter,
-        headerFilterFunc: isActionsColumn || column.headerFilter === false
-          ? undefined
-          : function () {
-              return true;
-            },
-        sorter: isActionsColumn || column.headerSort === false
-          ? undefined
-          : function () {
-              return 0;
-            },
-        cssClass: isActionsColumn ? 'efui-tabulator-actions-column' : 'efui-tabulator-data-column',
-        formatter: function (cell) {
-          var value = cell.getValue();
-          if (isActionsColumn) {
-            var wrapper = document.createElement('div');
-            wrapper.className = 'efui-row-actions';
-            wrapper.innerHTML = typeof value === 'string'
-              ? value
-              : (value && value.html ? value.html : '');
-            return wrapper;
-          }
-
-          if (value && value.href) {
-            var anchor = document.createElement('a');
-            anchor.className = 'efui-cell-link';
-            anchor.href = value.href;
-            anchor.textContent = value.text || '';
-            return anchor;
-          }
-
-          return value && value.text ? value.text : '';
-        }
+        filters: readActiveHeaderFilters(table),
+        sorters: readQuerySortState(sorters || currentSorters)
       };
-    });
+    }
 
-    var filterNavigationHandle = 0;
-    var readyForNavigation = false;
+    function createColumns(columns) {
+      return (columns || []).map(function (column) {
+        var isActionsColumn = column.field === '__actions';
+
+        return {
+          title: column.title || column.field || '',
+          field: column.field,
+          headerSort: column.headerSort !== false,
+          headerSortTristate: column.headerSort !== false,
+          headerFilter: column.headerFilter === false ? false : column.headerFilter,
+          headerFilterFunc: isActionsColumn || column.headerFilter === false
+            ? undefined
+            : function () {
+                return true;
+              },
+          sorter: isActionsColumn || column.headerSort === false
+            ? undefined
+            : function () {
+                return 0;
+              },
+          cssClass: isActionsColumn ? 'efui-tabulator-actions-column' : 'efui-tabulator-data-column',
+          formatter: function (cell) {
+            var value = cell.getValue();
+            if (isActionsColumn) {
+              var wrapper = document.createElement('div');
+              wrapper.className = 'efui-row-actions';
+              wrapper.innerHTML = typeof value === 'string'
+                ? value
+                : (value && value.html ? value.html : '');
+              return wrapper;
+            }
+
+            if (value && value.href) {
+              var anchor = document.createElement('a');
+              anchor.className = 'efui-cell-link';
+              anchor.href = value.href;
+              anchor.textContent = value.text || '';
+              return anchor;
+            }
+
+            return value && value.text ? value.text : '';
+          }
+        };
+      });
+    }
+
+    async function applyPayload(payload) {
+      config = payload || {};
+      listUrl = config.listUrl || listUrl;
+      dataUrl = config.dataUrl || dataUrl;
+      rebuildColumnMap(config.columns);
+      currentSorters = readQuerySortState(config.query && config.query.sorts);
+
+      applyingResponse = true;
+      try {
+        await table.replaceData(config.rows || []);
+      } finally {
+        applyingResponse = false;
+        setLoading(false, '');
+      }
+    }
+
+    async function fetchData(params, options) {
+      var query = params.toString();
+      var requestUrl = dataUrl + (query ? '?' + query : '');
+      var requestId = ++pendingRequestId;
+
+      if (options && options.replaceHistory) {
+        replaceBrowserUrl(listUrl, params);
+      }
+
+      setLoading(true, 'Loading table…');
+
+      try {
+        var response = await fetch(requestUrl, {
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Request failed');
+        }
+
+        var payload = await response.json();
+        if (requestId !== pendingRequestId) {
+          return;
+        }
+
+        await applyPayload(payload);
+      } catch {
+        if (requestId !== pendingRequestId) {
+          return;
+        }
+
+        setLoading(false, 'Unable to load table.');
+      }
+    }
+
+    function requestTableRefresh(mutator, options) {
+      var params = new URLSearchParams(window.location.search);
+      mutator(params);
+      if (!options || options.resetOffset !== false) {
+        params.set('offset', '0');
+      }
+
+      fetchData(params, {
+        replaceHistory: !options || options.replaceHistory !== false
+      });
+    }
 
     setLoading(true, 'Loading table…');
 
     var table = new window.Tabulator(host, {
       data: config.rows || [],
-      columns: columns,
+      columns: createColumns(config.columns),
       layout: 'fitColumns',
       reactiveData: false,
       initialSort: readInitialSort(config.query && config.query.sorts),
@@ -234,26 +320,42 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     table.on('dataSorting', function (sorters) {
-      if (!readyForNavigation) {
+      if (!readyForNavigation || applyingResponse) {
         return;
       }
 
-      navigate(listUrl, function (params) {
-        applySortQuery(params, sorters);
+      var state = readTableState(table, sorters);
+      currentSorters = state.sorters;
+      requestTableRefresh(function (params) {
+        applySortQuery(params, state.sorters);
+        applyFilterQuery(params, state.filters);
       });
     });
 
     table.on('dataFiltered', function () {
-      if (!readyForNavigation) {
+      if (!readyForNavigation || applyingResponse) {
         return;
       }
 
       clearTimeout(filterNavigationHandle);
       filterNavigationHandle = setTimeout(function () {
-        navigate(listUrl, function (params) {
-          applyFilterQuery(params, readActiveHeaderFilters(table));
+        var state = readTableState(table, currentSorters);
+        requestTableRefresh(function (params) {
+          applySortQuery(params, state.sorters);
+          applyFilterQuery(params, state.filters);
         });
       }, 400);
+    });
+
+    window.addEventListener('popstate', function () {
+      if (applyingResponse) {
+        return;
+      }
+
+      fetchData(new URLSearchParams(window.location.search), {
+        replaceHistory: false,
+        resetOffset: false
+      });
     });
 
     window.setTimeout(function () {

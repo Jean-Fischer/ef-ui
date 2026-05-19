@@ -83,6 +83,10 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().Contain("efui-table-config");
         script.Should().Contain("URLSearchParams");
         script.Should().Contain("window.location");
+        script.Should().Contain("fetch(");
+        script.Should().Contain("history.replaceState");
+        script.Should().Contain("popstate");
+        script.Should().Contain("dataUrl");
         script.Should().Contain("initialSort");
         script.Should().Contain("initialHeaderFilter");
         script.Should().Contain("headerFilterLiveFilterDelay");
@@ -110,6 +114,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().NotContain("firstFilter");
         script.Should().NotContain("firstSorter");
         script.Should().NotContain("table.on('dataFiltering'");
+        script.Should().NotContain("window.location.assign(");
         script.Should().NotContain("headerClick:");
         script.Should().NotContain("title += ' ↑'");
         script.Should().NotContain("efui-query-form");
