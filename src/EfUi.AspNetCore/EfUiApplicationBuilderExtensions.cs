@@ -73,7 +73,10 @@ public static class EfUiApplicationBuilderExtensions
         }
 
         var rows = ReadRows(dbContext, metadata.ClrType);
-        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, CreateRenderedListRows(dbContext, metadata, rows));
+        var html = new HtmlPageRenderer().RenderList(
+            options.RoutePrefix,
+            metadata,
+            new RenderedListView(CreateRenderedListRows(dbContext, metadata, rows)));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -198,7 +201,10 @@ public static class EfUiApplicationBuilderExtensions
         }
 
         var rows = ReadRows(dbContext, metadata.ClrType);
-        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, CreateRenderedListRows(dbContext, metadata, rows));
+        var html = new HtmlPageRenderer().RenderList(
+            options.RoutePrefix,
+            metadata,
+            new RenderedListView(CreateRenderedListRows(dbContext, metadata, rows)));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -230,7 +236,7 @@ public static class EfUiApplicationBuilderExtensions
             FormatValue(row.GetType().GetProperty(metadata.PrimaryKeyProperty.Name)?.GetValue(row)),
             metadata.AllProperties.ToDictionary(
                 property => property.Name,
-                property => GetRenderedListCellValue(row, property.Name, relatedValueLookups)))).ToList();
+                property => new RenderedListCell(GetRenderedListCellValue(row, property.Name, relatedValueLookups))))).ToList();
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> BuildRelatedValueLookups(DbContext dbContext, EntityMetadata metadata)

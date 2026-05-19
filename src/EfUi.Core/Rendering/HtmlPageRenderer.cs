@@ -23,7 +23,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         return html.ToString();
     }
 
-    public string RenderList(string routePrefix, EntityMetadata entity, IReadOnlyList<RenderedListRow> rows)
+    public string RenderList(string routePrefix, EntityMetadata entity, RenderedListView view)
     {
         var html = new StringBuilder();
         AppendDocumentStart(html, routePrefix, "efui-page");
@@ -32,6 +32,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append("<div class=\"efui-page-actions\">");
         html.Append($"<a class=\"efui-primary-link\" href=\"{routePrefix}/{entity.RouteName}/new\">Create New</a>");
         html.Append("</div>");
+        RenderQueryBuilder(html, view);
         html.Append("<div class=\"efui-table-wrapper\">");
         html.Append("<table class=\"efui-table\"><thead><tr>");
 
@@ -42,14 +43,16 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
         html.Append("<th>Actions</th></tr></thead><tbody>");
 
-        foreach (var row in rows)
+        foreach (var row in view.Rows)
         {
             html.Append("<tr>");
 
             foreach (var property in entity.AllProperties)
             {
                 row.Cells.TryGetValue(property.Name, out var value);
-                html.Append($"<td>{WebUtility.HtmlEncode(value ?? string.Empty)}</td>");
+                html.Append("<td>");
+                RenderListCell(html, value);
+                html.Append("</td>");
             }
 
             var escapedKey = EscapeRouteSegment(row.Key);
@@ -66,6 +69,63 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
     public string RenderForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
         => RenderEditForm(routePrefix, entity, model, isCreate, errors, null, submittedValues, fieldOptions);
+
+    private static void RenderQueryBuilder(StringBuilder html, RenderedListView view)
+    {
+        html.Append("<section class=\"efui-query-builder\">");
+
+        if (view.Errors.Count > 0)
+        {
+            html.Append("<div class=\"efui-error-summary\">");
+            foreach (var error in view.Errors)
+            {
+                html.Append($"<div class=\"efui-error\">{WebUtility.HtmlEncode(error)}</div>");
+            }
+
+            html.Append("</div>");
+        }
+
+        html.Append("<div class=\"efui-query-builder-group\"><h2>Filters</h2>");
+        if (view.Filters.Count == 0)
+        {
+            html.Append("<div class=\"efui-query-builder-empty\">No filters</div>");
+        }
+        else
+        {
+            foreach (var filter in view.Filters)
+            {
+                html.Append($"<div class=\"efui-query-builder-filter\">{WebUtility.HtmlEncode(filter.Field)} {WebUtility.HtmlEncode(filter.Operator)} {WebUtility.HtmlEncode(filter.Value ?? string.Empty)}</div>");
+            }
+        }
+
+        html.Append("</div>");
+        html.Append("<div class=\"efui-query-builder-group\"><h2>Sorts</h2>");
+        if (view.Sorts.Count == 0)
+        {
+            html.Append("<div class=\"efui-query-builder-empty\">No sorts</div>");
+        }
+        else
+        {
+            foreach (var sort in view.Sorts)
+            {
+                html.Append($"<div class=\"efui-query-builder-sort\">{WebUtility.HtmlEncode(sort.Field)} {WebUtility.HtmlEncode(sort.Direction)}</div>");
+            }
+        }
+
+        html.Append("</div></section>");
+    }
+
+    private static void RenderListCell(StringBuilder html, RenderedListCell? value)
+    {
+        var text = WebUtility.HtmlEncode(value?.Text ?? string.Empty);
+        if (!string.IsNullOrWhiteSpace(value?.Href))
+        {
+            html.Append($"<a class=\"efui-cell-link\" href=\"{value.Href}\">{text}</a>");
+            return;
+        }
+
+        html.Append(text);
+    }
 
     public string RenderEditForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, object? key, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
     {

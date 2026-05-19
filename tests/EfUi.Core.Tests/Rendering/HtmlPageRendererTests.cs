@@ -42,7 +42,7 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
-    public void RenderList_includes_theme_stylesheet_and_semantic_table_classes()
+    public void RenderList_includes_theme_stylesheet_query_builder_and_semantic_table_classes()
     {
         var sut = new HtmlPageRenderer();
         var metadata = new EntityMetadata(
@@ -60,14 +60,23 @@ public class HtmlPageRendererTests
                 Editable("Name", typeof(string))
             });
 
-        var html = sut.RenderList("/efui", metadata, new[]
-        {
-            new RenderedListRow("7", new Dictionary<string, string>
+        var html = sut.RenderList("/efui", metadata, new RenderedListView(
+            new[]
             {
-                ["Id"] = "7",
-                ["Name"] = "Ada"
-            })
-        });
+                new RenderedListRow("7", new Dictionary<string, RenderedListCell>
+                {
+                    ["Id"] = Cell("7"),
+                    ["Name"] = Cell("Ada", "/efui/users/7/edit")
+                })
+            },
+            new[]
+            {
+                new RenderedListFilter("Name", "contains", "Ada")
+            },
+            new[]
+            {
+                new RenderedListSort("Name", "asc")
+            }));
 
         html.Should().Contain("href=\"/efui/assets/efui.css\"");
         html.Should().Contain("class=\"efui-body\"");
@@ -75,6 +84,11 @@ public class HtmlPageRendererTests
         html.Should().Contain("<section class=\"efui-surface\">");
         html.Should().Contain("<div class=\"efui-page-actions\">");
         html.Should().Contain("<a class=\"efui-primary-link\" href=\"/efui/users/new\">Create New</a>");
+        html.Should().Contain("class=\"efui-query-builder\"");
+        html.Should().Contain("class=\"efui-query-builder-filter\"");
+        html.Should().Contain("class=\"efui-query-builder-sort\"");
+        html.Should().Contain("Name contains Ada");
+        html.Should().Contain("Name asc");
         html.Should().Contain("<div class=\"efui-table-wrapper\">");
         html.Should().Contain("<table class=\"efui-table\">");
         html.Should().Contain("<td class=\"efui-row-actions\">");
@@ -83,7 +97,7 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
-    public void RenderList_renders_prepared_display_values()
+    public void RenderList_renders_linked_cells_from_prepared_display_values()
     {
         var sut = new HtmlPageRenderer();
         var metadata = new EntityMetadata(
@@ -103,23 +117,24 @@ public class HtmlPageRendererTests
                 Editable("Title", typeof(string))
             });
 
-        var html = sut.RenderList("/efui", metadata, new[]
-        {
-            new RenderedListRow("1", new Dictionary<string, string>
+        var html = sut.RenderList("/efui", metadata, new RenderedListView(
+            new[]
             {
-                ["Id"] = "1",
-                ["ArtistId"] = "AC/DC",
-                ["Title"] = "For Those About To Rock"
-            })
-        });
+                new RenderedListRow("1", new Dictionary<string, RenderedListCell>
+                {
+                    ["Id"] = Cell("1"),
+                    ["ArtistId"] = Cell("AC/DC", "/efui/artists/1/edit"),
+                    ["Title"] = Cell("For Those About To Rock")
+                })
+            }));
 
-        html.Should().Contain(">AC/DC<");
+        html.Should().Contain("<a class=\"efui-cell-link\" href=\"/efui/artists/1/edit\">AC/DC</a>");
         html.Should().Contain(">For Those About To Rock<");
         html.Should().NotContain(">17<");
     }
 
     [Fact]
-    public void HtmlPageRenderer_exposes_only_rendered_list_row_RenderList_overload()
+    public void HtmlPageRenderer_exposes_only_rendered_list_view_RenderList_overload()
     {
         var overloads = typeof(HtmlPageRenderer)
             .GetMethods()
@@ -127,7 +142,7 @@ public class HtmlPageRendererTests
             .ToArray();
 
         overloads.Should().ContainSingle();
-        overloads[0].GetParameters()[2].ParameterType.Should().Be(typeof(IReadOnlyList<RenderedListRow>));
+        overloads[0].GetParameters()[2].ParameterType.Should().Be(typeof(RenderedListView));
     }
 
     [Fact]
@@ -531,15 +546,16 @@ public class HtmlPageRendererTests
                 Editable("Name", typeof(string))
             });
 
-        var html = sut.RenderList("/efui", metadata, new[]
-        {
-            new RenderedListRow("tenant / north?1", new Dictionary<string, string>
+        var html = sut.RenderList("/efui", metadata, new RenderedListView(
+            new[]
             {
-                ["TenantKey"] = "tenant / north?1",
-                ["GroupId"] = "Guests",
-                ["Name"] = "North"
-            })
-        });
+                new RenderedListRow("tenant / north?1", new Dictionary<string, RenderedListCell>
+                {
+                    ["TenantKey"] = Cell("tenant / north?1"),
+                    ["GroupId"] = Cell("Guests"),
+                    ["Name"] = Cell("North")
+                })
+            }));
 
         html.Should().Contain("/efui/tenants/tenant%20%2F%20north%3F1/edit");
         html.Should().Contain("/efui/tenants/tenant%20%2F%20north%3F1/delete");
@@ -590,6 +606,9 @@ public class HtmlPageRendererTests
 
     private static EditableFieldMetadata CollectionField(string name, Type relatedClrType, CollectionRelationshipKind relationshipKind = CollectionRelationshipKind.ManyToMany)
         => new(name, EditableFieldKind.Collection, typeof(string[]), null, name, relatedClrType, false, relationshipKind);
+
+    private static RenderedListCell Cell(string text, string? href = null)
+        => new(text, href);
 
     private sealed class UserRow
     {
