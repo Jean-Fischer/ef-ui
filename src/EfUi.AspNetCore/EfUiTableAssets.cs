@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', function () {
     var loading = container.querySelector('[data-role="efui-table-loading"]');
     var surface = container.closest('.efui-surface') || document;
     var fallback = surface.querySelector('[data-role="efui-table-fallback"]');
+    var statusHost = surface.querySelector('[data-role="efui-table-status"]');
     if (!(configElement instanceof HTMLScriptElement) || !(host instanceof HTMLElement)) {
       return;
     }
@@ -59,6 +60,48 @@ document.addEventListener('DOMContentLoaded', function () {
     function replaceBrowserUrl(targetListUrl, params) {
       var query = params.toString();
       window.history.replaceState({}, '', targetListUrl + (query ? '?' + query : ''));
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function renderStatus(status) {
+      if (!(statusHost instanceof HTMLElement) || !status) {
+        return;
+      }
+
+      var errors = Array.isArray(status.errors) ? status.errors : [];
+      var items = Array.isArray(status.items) ? status.items : [];
+      var emptyMessage = status.emptyMessage || 'No active filters or sorts';
+      var html = '';
+
+      if (errors.length > 0) {
+        html += '<div class="efui-error-summary" data-role="efui-table-status-errors">'
+          + errors.map(function (error) {
+              return '<div class="efui-error">' + escapeHtml(error) + '</div>';
+            }).join('')
+          + '</div>';
+      }
+
+      if (items.length === 0) {
+        html += '<div class="efui-table-status-empty" data-role="efui-table-status-empty">' + escapeHtml(emptyMessage) + '</div>';
+      } else {
+        html += '<div class="efui-table-status-items" data-role="efui-table-status-items">'
+          + items.map(function (item) {
+              return '<div class="efui-table-status-item">' + escapeHtml(item) + '</div>';
+            }).join('')
+          + '</div>';
+      }
+
+      statusHost.setAttribute('data-offset', String(status.offset || 0));
+      statusHost.setAttribute('data-limit', String(status.limit || 0));
+      statusHost.innerHTML = html;
     }
 
     var config;
@@ -239,6 +282,38 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     }
 
+    function syncQueryState(payload) {
+      if (!table) {
+        return;
+      }
+
+      var payloadColumns = payload && payload.columns ? payload.columns : [];
+      if (typeof table.setHeaderFilterValue === 'function') {
+        payloadColumns
+          .filter(function (column) {
+            return !!column && column.field !== '__actions';
+          })
+          .forEach(function (column) {
+            table.setHeaderFilterValue(column.field, isBlankFilterValue(column.headerFilterValue) ? '' : String(column.headerFilterValue));
+          });
+      }
+
+      var sorts = readInitialSort(payload && payload.query && payload.query.sorts);
+      if (sorts.length === 0) {
+        if (typeof table.clearSort === 'function') {
+          table.clearSort();
+        } else if (typeof table.setSort === 'function') {
+          table.setSort([]);
+        }
+
+        return;
+      }
+
+      if (typeof table.setSort === 'function') {
+        table.setSort(sorts);
+      }
+    }
+
     async function applyPayload(payload) {
       config = payload || {};
       listUrl = config.listUrl || listUrl;
@@ -248,7 +323,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
       applyingResponse = true;
       try {
+        syncQueryState(config);
         await table.replaceData(config.rows || []);
+        renderStatus(config.status);
       } finally {
         applyingResponse = false;
         setLoading(false, '');
@@ -360,6 +437,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     window.setTimeout(function () {
       readyForNavigation = true;
+      renderStatus(config.status);
       setLoading(false, '');
       container.classList.add('efui-table-enhancement-ready');
       if (fallback instanceof HTMLElement) {

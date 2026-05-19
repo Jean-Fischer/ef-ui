@@ -80,11 +80,11 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
     private static void RenderTableStatus(StringBuilder html, RenderedListView view)
     {
-        html.Append($"<section class=\"efui-table-status\" data-offset=\"{view.Offset}\" data-limit=\"{view.Limit}\">");
+        html.Append($"<section class=\"efui-table-status\" data-role=\"efui-table-status\" data-offset=\"{view.Offset}\" data-limit=\"{view.Limit}\">");
 
         if (view.Errors.Count > 0)
         {
-            html.Append("<div class=\"efui-error-summary\">");
+            html.Append("<div class=\"efui-error-summary\" data-role=\"efui-table-status-errors\">");
             foreach (var error in view.Errors)
             {
                 html.Append($"<div class=\"efui-error\">{WebUtility.HtmlEncode(error)}</div>");
@@ -95,12 +95,12 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
         if (view.Filters.Count == 0 && view.Sorts.Count == 0)
         {
-            html.Append("<div class=\"efui-table-status-empty\">No active filters or sorts</div>");
+            html.Append("<div class=\"efui-table-status-empty\" data-role=\"efui-table-status-empty\">No active filters or sorts</div>");
             html.Append("</section>");
             return;
         }
 
-        html.Append("<div class=\"efui-table-status-items\">");
+        html.Append("<div class=\"efui-table-status-items\" data-role=\"efui-table-status-items\">");
         foreach (var filter in view.Filters)
         {
             html.Append($"<div class=\"efui-table-status-item\">{WebUtility.HtmlEncode(filter.Field)} {WebUtility.HtmlEncode(filter.Operator)} {WebUtility.HtmlEncode(filter.Value ?? string.Empty)}</div>");

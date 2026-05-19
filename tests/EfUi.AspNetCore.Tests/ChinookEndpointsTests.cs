@@ -153,6 +153,7 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
 
         html.Should().Contain("InvoiceId eq 1");
         html.Should().Contain("class=\"efui-table-status\"");
+        html.Should().Contain("data-role=\"efui-table-status\"");
         html.Should().NotContain("class=\"efui-query-builder\"");
 
         using var config = GetTableConfig(html);
@@ -181,6 +182,7 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         html.Should().Contain("<span class=\"efui-breadcrumb-current\">Track</span>");
         html.Should().Contain("MediaTypeId eq 1");
         html.Should().Contain("class=\"efui-table-status\"");
+        html.Should().Contain("data-role=\"efui-table-status\"");
         html.Should().Contain("data-role=\"efui-table-loading\"");
         html.Should().NotContain("class=\"efui-query-builder\"");
         Regex.IsMatch(html, @"<tbody>\s*<tr>", RegexOptions.Singleline).Should().BeTrue();

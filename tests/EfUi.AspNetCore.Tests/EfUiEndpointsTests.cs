@@ -87,6 +87,9 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().Contain("history.replaceState");
         script.Should().Contain("popstate");
         script.Should().Contain("dataUrl");
+        script.Should().Contain("renderStatus");
+        script.Should().Contain("setHeaderFilterValue");
+        script.Should().Contain("setSort");
         script.Should().Contain("initialSort");
         script.Should().Contain("initialHeaderFilter");
         script.Should().Contain("headerFilterLiveFilterDelay");
@@ -209,6 +212,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/simple\">Simple</a>");
         html.Should().Contain("<span class=\"efui-breadcrumb-current\">User</span>");
         html.Should().Contain("class=\"efui-table-status\"");
+        html.Should().Contain("data-role=\"efui-table-status\"");
         html.Should().Contain("Name contains Ada");
         html.Should().Contain("Email desc");
         html.Should().NotContain("class=\"efui-query-builder\"");
