@@ -44,6 +44,20 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
+    public void RenderIndex_formats_nested_route_prefixes_into_readable_breadcrumb_labels()
+    {
+        var sut = new HtmlPageRenderer();
+        var entities = new[]
+        {
+            new EntityMetadata("User", "users", typeof(object), PrimaryKey("Id", typeof(int)), Array.Empty<EntityPropertyMetadata>(), Array.Empty<EntityPropertyMetadata>())
+        };
+
+        var html = sut.RenderIndex("/admin/ef-ui", entities);
+
+        html.Should().Contain("<span class=\"efui-breadcrumb-current\">Admin Ef Ui</span>");
+    }
+
+    [Fact]
     public void RenderList_includes_breadcrumbs_table_status_and_semantic_table_classes()
     {
         var sut = new HtmlPageRenderer();

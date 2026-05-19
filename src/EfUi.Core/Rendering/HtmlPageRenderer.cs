@@ -146,7 +146,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         }
 
         var words = segment
-            .Split(['-', '_'], StringSplitOptions.RemoveEmptyEntries)
+            .Split(['/', '-', '_'], StringSplitOptions.RemoveEmptyEntries)
             .Select(word => char.ToUpperInvariant(word[0]) + word[1..].ToLowerInvariant());
 
         return string.Join(' ', words);
