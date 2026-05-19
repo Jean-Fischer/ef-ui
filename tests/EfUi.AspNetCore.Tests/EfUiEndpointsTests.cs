@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using EfUi.SampleHost.Data;
 using SampleGroup = EfUi.SampleHost.Models.Group;
@@ -167,6 +168,25 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("data-role=\"efui-table-fallback\"");
         html.Should().Contain("\"library\":\"tabulator\"");
         html.Should().Contain("\"field\":\"__actions\"");
+
+        using var config = GetTableConfig(html);
+        var root = config.RootElement;
+        root.GetProperty("listUrl").GetString().Should().Be("/simple/users");
+
+        var nameColumn = GetColumn(root, "Name");
+        nameColumn.GetProperty("headerSort").GetBoolean().Should().BeTrue();
+        nameColumn.GetProperty("headerFilter").GetString().Should().Be("input");
+        nameColumn.GetProperty("filterOperator").GetString().Should().Be("contains");
+        nameColumn.GetProperty("headerFilterValue").GetString().Should().Be("Ada");
+
+        var actionsColumn = GetColumn(root, "__actions");
+        actionsColumn.GetProperty("headerSort").GetBoolean().Should().BeFalse();
+        actionsColumn.GetProperty("headerFilter").ValueKind.Should().Be(JsonValueKind.False);
+        actionsColumn.GetProperty("filterOperator").ValueKind.Should().Be(JsonValueKind.Null);
+
+        var activeSort = root.GetProperty("query").GetProperty("sorts").EnumerateArray().Single();
+        activeSort.GetProperty("Field").GetString().Should().Be("Email");
+        activeSort.GetProperty("Direction").GetString().Should().Be("desc");
     }
 
     [Fact]
@@ -500,6 +520,22 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
             await db.Database.CloseConnectionAsync();
         }
     }
+
+    private static JsonDocument GetTableConfig(string html)
+    {
+        var startMarker = "<script type=\"application/json\" data-role=\"efui-table-config\">";
+        var start = html.IndexOf(startMarker, StringComparison.Ordinal);
+        start.Should().BeGreaterThanOrEqualTo(0);
+        start += startMarker.Length;
+        var end = html.IndexOf("</script>", start, StringComparison.Ordinal);
+        end.Should().BeGreaterThan(start);
+        return JsonDocument.Parse(html[start..end]);
+    }
+
+    private static JsonElement GetColumn(JsonElement config, string field)
+        => config.GetProperty("columns")
+            .EnumerateArray()
+            .Single(column => string.Equals(column.GetProperty("field").GetString(), field, StringComparison.Ordinal));
 
     private static string GetTableRowContainingValue(string html, string value)
     {

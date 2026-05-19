@@ -181,13 +181,49 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
     private static string BuildTableEnhancementConfig(string routePrefix, EntityMetadata entity, RenderedListView view)
     {
+        var activeFilters = view.Filters
+            .GroupBy(filter => filter.Field, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
+        var activeSorts = view.Sorts
+            .GroupBy(sort => sort.Field, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
+
         var payload = new
         {
             library = "tabulator",
             entity = entity.RouteName,
+            listUrl = $"{routePrefix}/{entity.RouteName}",
             columns = entity.AllProperties
-                .Select(property => new { field = property.Name, title = property.Name, headerSort = true })
-                .Concat(new[] { new { field = "__actions", title = "Actions", headerSort = false } })
+                .Select(property =>
+                {
+                    activeFilters.TryGetValue(property.Name, out var activeFilter);
+                    activeSorts.TryGetValue(property.Name, out var activeSort);
+                    return new
+                    {
+                        field = property.Name,
+                        title = property.Name,
+                        headerSort = true,
+                        headerFilter = (object)"input",
+                        filterOperator = (string?)(activeFilter?.Operator ?? "contains"),
+                        headerFilterValue = activeFilter?.Value,
+                        sortDirection = activeSort?.Direction,
+                        isFilterable = true
+                    };
+                })
+                .Concat(new[]
+                {
+                    new
+                    {
+                        field = "__actions",
+                        title = "Actions",
+                        headerSort = false,
+                        headerFilter = (object)false,
+                        filterOperator = (string?)null,
+                        headerFilterValue = (string?)null,
+                        sortDirection = (string?)null,
+                        isFilterable = false
+                    }
+                })
                 .ToList(),
             rows = view.Rows.Select(row =>
             {

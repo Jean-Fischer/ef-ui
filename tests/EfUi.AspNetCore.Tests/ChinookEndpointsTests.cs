@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -169,6 +170,21 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         html.Should().NotContain("class=\"efui-query-builder\"");
         Regex.IsMatch(html, @"<tbody>\s*<tr>", RegexOptions.Singleline).Should().BeTrue();
         html.Should().Contain("MPEG audio file");
+
+        using var config = GetTableConfig(html);
+        var root = config.RootElement;
+        root.GetProperty("listUrl").GetString().Should().Be("/chinook/tracks");
+
+        var mediaTypeColumn = GetColumn(root, "MediaTypeId");
+        mediaTypeColumn.GetProperty("headerSort").GetBoolean().Should().BeTrue();
+        mediaTypeColumn.GetProperty("headerFilter").GetString().Should().Be("input");
+        mediaTypeColumn.GetProperty("filterOperator").GetString().Should().Be("eq");
+        mediaTypeColumn.GetProperty("headerFilterValue").GetString().Should().Be("1");
+
+        var actionsColumn = GetColumn(root, "__actions");
+        actionsColumn.GetProperty("headerSort").GetBoolean().Should().BeFalse();
+        actionsColumn.GetProperty("headerFilter").ValueKind.Should().Be(JsonValueKind.False);
+        actionsColumn.GetProperty("filterOperator").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]
@@ -188,4 +204,20 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         var html = await _client.GetStringAsync("/chinook/genres/1/edit");
         html.Should().Contain($"name=\"Name\" value=\"{updatedName}\"");
     }
+
+    private static JsonDocument GetTableConfig(string html)
+    {
+        var startMarker = "<script type=\"application/json\" data-role=\"efui-table-config\">";
+        var start = html.IndexOf(startMarker, StringComparison.Ordinal);
+        start.Should().BeGreaterThanOrEqualTo(0);
+        start += startMarker.Length;
+        var end = html.IndexOf("</script>", start, StringComparison.Ordinal);
+        end.Should().BeGreaterThan(start);
+        return JsonDocument.Parse(html[start..end]);
+    }
+
+    private static JsonElement GetColumn(JsonElement config, string field)
+        => config.GetProperty("columns")
+            .EnumerateArray()
+            .Single(column => string.Equals(column.GetProperty("field").GetString(), field, StringComparison.Ordinal));
 }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using EfUi.Core.Metadata;
 using EfUi.Core.Rendering;
 using FluentAssertions;
@@ -117,6 +118,69 @@ public class HtmlPageRendererTests
         html.Should().Contain("<a class=\"efui-row-action-link\" href=\"/efui/users/7/edit\">Edit</a>");
         html.Should().Contain("<button class=\"efui-row-action-button\" type=\"submit\">Delete</button>");
         html.Should().Contain("\"field\":\"__actions\"");
+    }
+
+    [Fact]
+    public void RenderList_emits_explicit_tabulator_column_metadata_for_active_filters_and_actions()
+    {
+        var sut = new HtmlPageRenderer();
+        var metadata = new EntityMetadata(
+            "User",
+            "users",
+            typeof(UserRow),
+            PrimaryKey("Id", typeof(int)),
+            new[]
+            {
+                PrimaryKey("Id", typeof(int)),
+                Editable("Name", typeof(string)),
+                Editable("Email", typeof(string))
+            },
+            new[]
+            {
+                Editable("Name", typeof(string)),
+                Editable("Email", typeof(string))
+            });
+
+        var html = sut.RenderList("/efui", metadata, new RenderedListView(
+            new[]
+            {
+                new RenderedListRow("7", new Dictionary<string, RenderedListCell>
+                {
+                    ["Id"] = Cell("7"),
+                    ["Name"] = Cell("Ada"),
+                    ["Email"] = Cell("ada@example.com")
+                })
+            },
+            new[]
+            {
+                new RenderedListFilter("Name", "contains", "Ada")
+            },
+            new[]
+            {
+                new RenderedListSort("Email", "desc")
+            },
+            Offset: 0,
+            Limit: 25));
+
+        using var config = GetTableConfig(html);
+        var root = config.RootElement;
+        root.GetProperty("listUrl").GetString().Should().Be("/efui/users");
+
+        var nameColumn = GetColumn(root, "Name");
+        nameColumn.GetProperty("title").GetString().Should().Be("Name");
+        nameColumn.GetProperty("headerSort").GetBoolean().Should().BeTrue();
+        nameColumn.GetProperty("headerFilter").GetString().Should().Be("input");
+        nameColumn.GetProperty("filterOperator").GetString().Should().Be("contains");
+        nameColumn.GetProperty("headerFilterValue").GetString().Should().Be("Ada");
+
+        var actionsColumn = GetColumn(root, "__actions");
+        actionsColumn.GetProperty("headerSort").GetBoolean().Should().BeFalse();
+        actionsColumn.GetProperty("headerFilter").ValueKind.Should().Be(JsonValueKind.False);
+        actionsColumn.GetProperty("filterOperator").ValueKind.Should().Be(JsonValueKind.Null);
+
+        var activeSort = root.GetProperty("query").GetProperty("sorts").EnumerateArray().Single();
+        activeSort.GetProperty("Field").GetString().Should().Be("Email");
+        activeSort.GetProperty("Direction").GetString().Should().Be("desc");
     }
 
     [Fact]
@@ -634,6 +698,22 @@ public class HtmlPageRendererTests
 
     private static EditableFieldMetadata CollectionField(string name, Type relatedClrType, CollectionRelationshipKind relationshipKind = CollectionRelationshipKind.ManyToMany)
         => new(name, EditableFieldKind.Collection, typeof(string[]), null, name, relatedClrType, false, relationshipKind);
+
+    private static JsonDocument GetTableConfig(string html)
+    {
+        var startMarker = "<script type=\"application/json\" data-role=\"efui-table-config\">";
+        var start = html.IndexOf(startMarker, StringComparison.Ordinal);
+        start.Should().BeGreaterThanOrEqualTo(0);
+        start += startMarker.Length;
+        var end = html.IndexOf("</script>", start, StringComparison.Ordinal);
+        end.Should().BeGreaterThan(start);
+        return JsonDocument.Parse(html[start..end]);
+    }
+
+    private static JsonElement GetColumn(JsonElement config, string field)
+        => config.GetProperty("columns")
+            .EnumerateArray()
+            .Single(column => string.Equals(column.GetProperty("field").GetString(), field, StringComparison.Ordinal));
 
     private static RenderedListCell Cell(string text, string? href = null)
         => new(text, href);
