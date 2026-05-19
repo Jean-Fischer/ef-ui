@@ -14,7 +14,6 @@ document.addEventListener('DOMContentLoaded', function () {
     var loading = container.querySelector('[data-role="efui-table-loading"]');
     var surface = container.closest('.efui-surface') || document;
     var fallback = surface.querySelector('[data-role="efui-table-fallback"]');
-    var queryForm = surface.querySelector('[data-role="efui-query-form"]');
     if (!(configElement instanceof HTMLScriptElement) || !(host instanceof HTMLElement)) {
       return;
     }
@@ -37,12 +36,6 @@ document.addEventListener('DOMContentLoaded', function () {
       setLoading(true, 'Loading table…');
       var query = params.toString();
       window.location.assign(window.location.pathname + (query ? '?' + query : ''));
-    }
-
-    if (queryForm instanceof HTMLFormElement) {
-      queryForm.addEventListener('submit', function () {
-        setLoading(true, 'Loading table…');
-      });
     }
 
     var config;

@@ -78,10 +78,84 @@ internal static class EfUiFormCss
   color: #1d4ed8;
 }
 
+.efui-breadcrumbs {
+  margin: 0 0 1rem;
+}
+
+.efui-breadcrumb-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.efui-breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.efui-breadcrumb-item + .efui-breadcrumb-item::before {
+  content: "/";
+  color: #9ca3af;
+}
+
+.efui-breadcrumb-link {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.efui-breadcrumb-link:hover {
+  text-decoration: underline;
+}
+
+.efui-breadcrumb-current {
+  color: #374151;
+  font-weight: 600;
+}
+
 .efui-page-actions {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 1rem;
+}
+
+.efui-table-status {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+}
+
+.efui-table-status .efui-error-summary {
+  margin-bottom: 0;
+}
+
+.efui-table-status-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.efui-table-status-item,
+.efui-table-status-empty {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 0.875rem;
 }
 
 .efui-query-builder {
@@ -298,7 +372,8 @@ internal static class EfUiFormCss
 .efui-row-action-button:focus,
 .efui-link-grid a:focus,
 .efui-row-action-link:focus,
-.efui-related-link-action:focus {
+.efui-related-link-action:focus,
+.efui-breadcrumb-link:focus {
   outline: 2px solid #bfdbfe;
   outline-offset: 1px;
   border-color: #2563eb;

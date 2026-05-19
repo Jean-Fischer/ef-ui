@@ -58,6 +58,8 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var css = await _client.GetStringAsync("/simple/assets/efui.css");
 
         css.Should().Contain(".efui-link-grid");
+        css.Should().Contain(".efui-breadcrumbs");
+        css.Should().Contain(".efui-table-status");
         css.Should().Contain(".efui-page-actions");
         css.Should().Contain(".efui-primary-link");
         css.Should().Contain(".efui-table-wrapper");
@@ -76,6 +78,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().Contain("URLSearchParams");
         script.Should().Contain("window.location");
         script.Should().Contain("efui-table-loading");
+        script.Should().NotContain("efui-query-form");
         css.Should().Contain(".efui-table-enhancement");
         css.Should().Contain(".efui-table-loading");
     }
