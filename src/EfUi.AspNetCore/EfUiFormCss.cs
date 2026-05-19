@@ -368,18 +368,29 @@ internal static class EfUiFormCss
   border-color: #2563eb;
 }
 
-.efui-error-summary {
+.efui-error-summary,
+.efui-warning-summary {
   display: grid;
   gap: 0.5rem;
   margin-bottom: 1rem;
 }
 
-.efui-error {
+.efui-error,
+.efui-warning {
   padding: 0.75rem 0.875rem;
-  border: 1px solid #fecaca;
   border-radius: 0.625rem;
+}
+
+.efui-error {
+  border: 1px solid #fecaca;
   background: #fef2f2;
   color: #b91c1c;
+}
+
+.efui-warning {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #92400e;
 }
 
 .efui-chip-picker {

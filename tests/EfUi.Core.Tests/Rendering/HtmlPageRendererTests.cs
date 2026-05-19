@@ -25,6 +25,37 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
+    public void RenderIndex_renders_warning_summary_when_warnings_are_present()
+    {
+        var sut = new HtmlPageRenderer();
+        var entities = new[]
+        {
+            new EntityMetadata("User", "users", typeof(object), PrimaryKey("Id", typeof(int)), Array.Empty<EntityPropertyMetadata>(), Array.Empty<EntityPropertyMetadata>())
+        };
+
+        var html = sut.RenderIndex("/efui", entities, ["Entity 'Membership' has a composite primary key and cannot be rendered yet."]);
+
+        html.Should().Contain("class=\"efui-warning-summary\"");
+        html.Should().Contain("class=\"efui-warning\"");
+        html.Should().Contain("composite primary key");
+    }
+    [Fact]
+    public void RenderIndex_renders_error_summary_when_blocking_issues_are_present()
+    {
+        var sut = new HtmlPageRenderer();
+        var entities = new[]
+        {
+            new EntityMetadata("User", "users", typeof(object), PrimaryKey("Id", typeof(int)), Array.Empty<EntityPropertyMetadata>(), Array.Empty<EntityPropertyMetadata>())
+        };
+
+        var html = sut.RenderIndex("/efui", entities, errors: ["reports — Entity 'ReportRow' has no primary key and cannot be rendered yet."]);
+
+        html.Should().Contain("class=\"efui-error-summary\"");
+        html.Should().Contain("class=\"efui-error\"");
+        html.Should().Contain("no primary key");
+    }
+
+    [Fact]
     public void RenderIndex_includes_theme_stylesheet_semantic_shell_and_breadcrumbs()
     {
         var sut = new HtmlPageRenderer();
@@ -56,6 +87,18 @@ public class HtmlPageRendererTests
         var html = sut.RenderIndex("/admin/ef-ui", entities);
 
         html.Should().Contain("<span class=\"efui-breadcrumb-current\">Admin Ef Ui</span>");
+    }
+    [Fact]
+    public void RenderErrorPage_renders_error_summary_and_back_link()
+    {
+        var sut = new HtmlPageRenderer();
+
+        var html = sut.RenderErrorPage("/efui", "reports", ["Entity 'ReportRow' has no primary key and cannot be rendered yet."]);
+
+        html.Should().Contain("class=\"efui-error-summary\"");
+        html.Should().Contain("class=\"efui-error\"");
+        html.Should().Contain("href=\"/efui\"");
+        html.Should().Contain("no primary key");
     }
 
     [Fact]

@@ -7,7 +7,7 @@ namespace EfUi.Core.Rendering;
 
 public sealed class HtmlPageRenderer : IHtmlPageRenderer
 {
-    public string RenderIndex(string routePrefix, IReadOnlyList<EntityMetadata> entities)
+    public string RenderIndex(string routePrefix, IReadOnlyList<EntityMetadata> entities, IReadOnlyList<string>? warnings = null, IReadOnlyList<string>? errors = null)
     {
         var html = new StringBuilder();
         AppendDocumentStart(html, routePrefix, "efui-page");
@@ -17,6 +17,8 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         ]);
         html.Append("<section class=\"efui-surface\">");
         html.Append("<h1>EF UI</h1>");
+        RenderIssueSummary(html, warnings ?? [], warning: true);
+        RenderIssueSummary(html, errors ?? [], warning: false);
         html.Append("<ul class=\"efui-index-list efui-link-grid\">");
 
         foreach (var entity in entities)
@@ -82,16 +84,8 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     {
         html.Append($"<section class=\"efui-table-status\" data-role=\"efui-table-status\" data-offset=\"{view.Offset}\" data-limit=\"{view.Limit}\">");
 
-        if (view.Errors.Count > 0)
-        {
-            html.Append("<div class=\"efui-error-summary\" data-role=\"efui-table-status-errors\">");
-            foreach (var error in view.Errors)
-            {
-                html.Append($"<div class=\"efui-error\">{WebUtility.HtmlEncode(error)}</div>");
-            }
-
-            html.Append("</div>");
-        }
+        RenderIssueSummary(html, view.Warnings, warning: true);
+        RenderIssueSummary(html, view.Errors, warning: false);
 
         if (view.Filters.Count == 0 && view.Sorts.Count == 0)
         {
@@ -112,6 +106,24 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         }
 
         html.Append("</div></section>");
+    }
+
+    private static void RenderIssueSummary(StringBuilder html, IReadOnlyList<string> messages, bool warning)
+    {
+        if (messages.Count == 0)
+        {
+            return;
+        }
+
+        var summaryClass = warning ? "efui-warning-summary" : "efui-error-summary";
+        var itemClass = warning ? "efui-warning" : "efui-error";
+        html.Append($"<div class=\"{summaryClass}\">");
+        foreach (var message in messages)
+        {
+            html.Append($"<div class=\"{itemClass}\">{WebUtility.HtmlEncode(message)}</div>");
+        }
+
+        html.Append("</div>");
     }
 
     private static void RenderBreadcrumbs(StringBuilder html, IReadOnlyList<BreadcrumbItem> items)
@@ -176,6 +188,23 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append("<script type=\"application/json\" data-role=\"efui-table-config\">");
         html.Append(RenderedListPayloadFactory.Serialize(routePrefix, entity, view));
         html.Append("</script></section>");
+    }
+
+    public string RenderErrorPage(string routePrefix, string title, IReadOnlyList<string> messages)
+    {
+        var html = new StringBuilder();
+        AppendDocumentStart(html, routePrefix, "efui-page");
+        RenderBreadcrumbs(html, [
+            new BreadcrumbItem("EF UI", "/"),
+            new BreadcrumbItem(GetMountDisplayName(routePrefix), routePrefix),
+            new BreadcrumbItem(title)
+        ]);
+        html.Append("<section class=\"efui-surface\">");
+        html.Append($"<h1>{WebUtility.HtmlEncode(title)}</h1>");
+        RenderIssueSummary(html, messages, warning: false);
+        html.Append($"<a class=\"efui-primary-link\" href=\"{routePrefix}\">Back</a>");
+        html.Append("</section></main></body></html>");
+        return html.ToString();
     }
 
     private static string BuildRowActionsMarkup(string routePrefix, EntityMetadata entity, string rowKey)

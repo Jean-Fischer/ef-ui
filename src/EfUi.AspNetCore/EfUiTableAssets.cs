@@ -63,10 +63,19 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
+      var warnings = Array.isArray(status.warnings) ? status.warnings : [];
       var errors = Array.isArray(status.errors) ? status.errors : [];
       var items = Array.isArray(status.items) ? status.items : [];
       var emptyMessage = status.emptyMessage || 'No active filters or sorts';
       var html = '';
+
+      if (warnings.length > 0) {
+        html += '<div class="efui-warning-summary" data-role="efui-table-status-warnings">'
+          + warnings.map(function (warning) {
+              return '<div class="efui-warning">' + escapeHtml(warning) + '</div>';
+            }).join('')
+          + '</div>';
+      }
 
       if (errors.length > 0) {
         html += '<div class="efui-error-summary" data-role="efui-table-status-errors">'

@@ -169,15 +169,29 @@ public class EntityMetadataProviderTests
     }
 
     [Fact]
-    public void GetEntities_throws_for_regular_entities_with_composite_primary_keys()
+    public void GetDiscoveryResult_reports_blocking_issues_for_regular_entities_with_composite_primary_keys()
     {
         using var db = CreateCompositeKeyDb();
         var sut = new EfEntityMetadataProvider();
 
-        var act = () => sut.GetEntities(db);
+        var discovery = sut.GetDiscoveryResult(db);
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("Entity 'Membership' must have a single primary key.*");
+        discovery.Entities.Select(x => x.RouteName).Should().NotContain("memberships");
+        discovery.BlockingIssues("memberships").Should().ContainSingle(issue =>
+            issue.Message.Contains("composite primary key", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void GetDiscoveryResult_reports_blocking_issues_for_keyless_entities()
+    {
+        using var db = CreateKeylessDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var discovery = sut.GetDiscoveryResult(db);
+
+        discovery.Entities.Select(x => x.RouteName).Should().NotContain("reports");
+        discovery.BlockingIssues("reports").Should().ContainSingle(issue =>
+            issue.Message.Contains("no primary key", StringComparison.OrdinalIgnoreCase));
     }
 
     private static SampleModelDbContext CreateDb()
@@ -276,6 +290,17 @@ public class EntityMetadataProviderTests
         return db;
     }
 
+    private static KeylessDbContext CreateKeylessDb()
+    {
+        var options = new DbContextOptionsBuilder<KeylessDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        var db = new KeylessDbContext(options);
+        db.Database.OpenConnection();
+        return db;
+    }
+
     private sealed class RouteNameDbContext(DbContextOptions<RouteNameDbContext> options) : DbContext(options)
     {
         public DbSet<User> Accounts => Set<User>();
@@ -352,6 +377,16 @@ public class EntityMetadataProviderTests
         }
     }
 
+    private sealed class KeylessDbContext(DbContextOptions<KeylessDbContext> options) : DbContext(options)
+    {
+        public DbSet<ReportRow> Reports => Set<ReportRow>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<ReportRow>().HasNoKey().ToTable("reports");
+        }
+    }
+
     private sealed class DisplayColumnDbContext(DbContextOptions<DisplayColumnDbContext> options) : DbContext(options)
     {
         public DbSet<Customer> Customers => Set<Customer>();
@@ -411,6 +446,11 @@ public class EntityMetadataProviderTests
     {
         public int UserId { get; set; }
         public int GroupId { get; set; }
+    }
+
+    private sealed class ReportRow
+    {
+        public string Name { get; set; } = string.Empty;
     }
 
     private sealed class Order

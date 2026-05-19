@@ -68,21 +68,26 @@ public static class EfUiApplicationBuilderExtensions
     private static IResult RenderIndex(EfUiOptions options, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
-        var entities = new EfEntityMetadataProvider().GetEntities(dbContext);
-        var html = new HtmlPageRenderer().RenderIndex(options.RoutePrefix, entities);
+        var discovery = DiscoverEntities(dbContext);
+        var html = new HtmlPageRenderer().RenderIndex(
+            options.RoutePrefix,
+            discovery.Entities,
+            GetRenderableIssueMessages(discovery),
+            GetBlockingIssueMessages(discovery));
         return Results.Content(html, HtmlContentType);
     }
 
     private static IResult RenderEntityList(EfUiOptions options, string entity, HttpRequest request, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
-        var metadata = GetEntityMetadata(dbContext, entity);
+        var discovery = DiscoverEntities(dbContext);
+        var metadata = GetEntityMetadata(discovery, entity);
         if (metadata is null)
         {
-            return Results.NotFound();
+            return RenderMissingEntityResult(options.RoutePrefix, discovery, entity);
         }
 
-        var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request);
+        var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request, GetRenderableIssueMessages(discovery, entity));
         var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, view);
         return Results.Content(html, HtmlContentType);
     }
@@ -90,23 +95,25 @@ public static class EfUiApplicationBuilderExtensions
     private static IResult RenderEntityListData(EfUiOptions options, string entity, HttpRequest request, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
-        var metadata = GetEntityMetadata(dbContext, entity);
+        var discovery = DiscoverEntities(dbContext);
+        var metadata = GetEntityMetadata(discovery, entity);
         if (metadata is null)
         {
             return Results.NotFound();
         }
 
-        var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request);
+        var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request, GetRenderableIssueMessages(discovery, entity));
         return Results.Text(JsonSerializer.Serialize(RenderedListPayloadFactory.Create(options.RoutePrefix, metadata, view)), "application/json");
     }
 
     private static IResult RenderCreateForm(EfUiOptions options, string entity, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
-        var metadata = GetEntityMetadata(dbContext, entity);
+        var discovery = DiscoverEntities(dbContext);
+        var metadata = GetEntityMetadata(discovery, entity);
         if (metadata is null)
         {
-            return Results.NotFound();
+            return RenderMissingEntityResult(options.RoutePrefix, discovery, entity);
         }
 
         var html = new HtmlPageRenderer().RenderEditForm(
@@ -123,10 +130,11 @@ public static class EfUiApplicationBuilderExtensions
     private static async Task<IResult> RenderEditFormAsync(EfUiOptions options, string entity, string id, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
-        var metadata = GetEntityMetadata(dbContext, entity);
+        var discovery = DiscoverEntities(dbContext);
+        var metadata = GetEntityMetadata(discovery, entity);
         if (metadata is null)
         {
-            return Results.NotFound();
+            return RenderMissingEntityResult(options.RoutePrefix, discovery, entity);
         }
 
         var key = TryReadKey(dbContext, metadata, id);
@@ -157,10 +165,11 @@ public static class EfUiApplicationBuilderExtensions
     private static async Task<IResult> CreateEntityAsync(EfUiOptions options, string entity, HttpRequest request, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
-        var metadata = GetEntityMetadata(dbContext, entity);
+        var discovery = DiscoverEntities(dbContext);
+        var metadata = GetEntityMetadata(discovery, entity);
         if (metadata is null)
         {
-            return Results.NotFound();
+            return RenderMissingEntityResult(options.RoutePrefix, discovery, entity);
         }
 
         var values = EnsureCollectionFieldsPresent(metadata, await ReadFormAsync(request), isCreate: true);
@@ -174,10 +183,11 @@ public static class EfUiApplicationBuilderExtensions
     private static async Task<IResult> UpdateEntityAsync(EfUiOptions options, string entity, string id, HttpRequest request, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
-        var metadata = GetEntityMetadata(dbContext, entity);
+        var discovery = DiscoverEntities(dbContext);
+        var metadata = GetEntityMetadata(discovery, entity);
         if (metadata is null)
         {
-            return Results.NotFound();
+            return RenderMissingEntityResult(options.RoutePrefix, discovery, entity);
         }
 
         var key = TryReadKey(dbContext, metadata, id);
@@ -197,10 +207,11 @@ public static class EfUiApplicationBuilderExtensions
     private static async Task<IResult> DeleteEntityAsync(EfUiOptions options, string entity, string id, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
-        var metadata = GetEntityMetadata(dbContext, entity);
+        var discovery = DiscoverEntities(dbContext);
+        var metadata = GetEntityMetadata(discovery, entity);
         if (metadata is null)
         {
-            return Results.NotFound();
+            return RenderMissingEntityResult(options.RoutePrefix, discovery, entity);
         }
 
         var key = TryReadKey(dbContext, metadata, id);
@@ -235,8 +246,44 @@ public static class EfUiApplicationBuilderExtensions
     private static EntityCrudService CreateCrudService()
         => new(new EfEntityMetadataProvider(), new ScalarValueBinder());
 
-    private static EntityMetadata? GetEntityMetadata(DbContext dbContext, string entity)
-        => new EfEntityMetadataProvider().GetEntities(dbContext).SingleOrDefault(x => x.RouteName == entity);
+    private static EfEntityMetadataProvider CreateMetadataProvider()
+        => new();
+
+    private static EntityDiscoveryResult DiscoverEntities(DbContext dbContext)
+        => CreateMetadataProvider().GetDiscoveryResult(dbContext);
+
+    private static EntityMetadata? GetEntityMetadata(EntityDiscoveryResult discovery, string entity)
+        => discovery.Entities.SingleOrDefault(x => x.RouteName == entity);
+
+    private static IReadOnlyList<string> GetRenderableIssueMessages(EntityDiscoveryResult discovery)
+        => discovery.Issues
+            .Where(issue => issue.CanRender)
+            .Select(issue => $"{issue.RouteName} — {issue.Message}")
+            .ToList();
+
+    private static IReadOnlyList<string> GetBlockingIssueMessages(EntityDiscoveryResult discovery)
+        => discovery.Issues
+            .Where(issue => !issue.CanRender)
+            .Select(issue => $"{issue.RouteName} — {issue.Message}")
+            .ToList();
+
+    private static IReadOnlyList<string> GetRenderableIssueMessages(EntityDiscoveryResult discovery, string entity)
+        => discovery.Issues
+            .Where(issue => issue.CanRender && string.Equals(issue.RouteName, entity, StringComparison.OrdinalIgnoreCase))
+            .Select(issue => issue.Message)
+            .ToList();
+
+    private static IResult RenderMissingEntityResult(string routePrefix, EntityDiscoveryResult discovery, string entity)
+    {
+        var blockingIssues = discovery.Issues
+            .Where(issue => !issue.CanRender && string.Equals(issue.RouteName, entity, StringComparison.OrdinalIgnoreCase))
+            .Select(issue => issue.Message)
+            .ToList();
+
+        return blockingIssues.Count > 0
+            ? Results.Content(new HtmlPageRenderer().RenderErrorPage(routePrefix, entity, blockingIssues), HtmlContentType, statusCode: StatusCodes.Status400BadRequest)
+            : Results.NotFound();
+    }
 
     private static BoundTableQuery BindTableQuery(HttpRequest request, EntityMetadata metadata)
     {
@@ -351,7 +398,7 @@ public static class EfUiApplicationBuilderExtensions
 
     private sealed record BoundTableQuery(TableQuery Query, IReadOnlyList<string> Errors);
 
-    private static RenderedListView BuildRenderedListView(string routePrefix, DbContext dbContext, EntityMetadata metadata, HttpRequest request)
+    private static RenderedListView BuildRenderedListView(string routePrefix, DbContext dbContext, EntityMetadata metadata, HttpRequest request, IReadOnlyList<string>? warnings = null)
     {
         var queryResult = BindTableQuery(request, metadata);
         var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata);
@@ -362,7 +409,8 @@ public static class EfUiApplicationBuilderExtensions
             queryResult.Query.Sorts.Select(sort => new RenderedListSort(sort.Field, sort.Direction)).ToList(),
             queryResult.Errors,
             queryResult.Query.Offset,
-            queryResult.Query.Limit);
+            queryResult.Query.Limit,
+            warnings);
     }
 
     private static IReadOnlyList<object> ReadRows(DbContext dbContext, Type entityClrType)
@@ -522,10 +570,11 @@ public static class EfUiApplicationBuilderExtensions
             return Results.NotFound();
         }
 
-        var metadata = GetEntityMetadata(dbContext, entity);
+        var discovery = DiscoverEntities(dbContext);
+        var metadata = GetEntityMetadata(discovery, entity);
         if (metadata is null)
         {
-            return Results.NotFound();
+            return RenderMissingEntityResult(routePrefix, discovery, entity);
         }
 
         var model = !isCreate && key is not null ? dbContext.Find(metadata.ClrType, key) : null;

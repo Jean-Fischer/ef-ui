@@ -6,31 +6,51 @@ namespace EfUi.Core.Metadata;
 
 public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
 {
-    public IReadOnlyList<EntityMetadata> GetEntities(DbContext dbContext)
+    public EntityDiscoveryResult GetDiscoveryResult(DbContext dbContext)
     {
-        return dbContext.Model.GetEntityTypes()
+        var issues = new List<EntityDiscoveryIssue>();
+        var entities = new List<EntityMetadata>();
+
+        foreach (var entityType in dbContext.Model.GetEntityTypes()
             .Where(entityType => entityType.ClrType.IsClass)
-            .Where(entityType => !IsSharedJoinEntity(entityType))
-            .Select(Build)
-            .OrderBy(x => x.RouteName)
-            .ToList();
+            .Where(entityType => !IsSharedJoinEntity(entityType)))
+        {
+            var entity = Build(entityType, issues);
+            if (entity is not null)
+            {
+                entities.Add(entity);
+            }
+        }
+
+        return new EntityDiscoveryResult(
+            entities.OrderBy(entity => entity.RouteName).ToList(),
+            issues);
     }
+
+    public IReadOnlyList<EntityMetadata> GetEntities(DbContext dbContext)
+        => GetDiscoveryResult(dbContext).Entities;
 
     public EntityMetadata GetEntity(DbContext dbContext, string routeName)
-    {
-        return GetEntities(dbContext).Single(x => x.RouteName == routeName);
-    }
+        => GetEntities(dbContext).Single(entity => entity.RouteName == routeName);
 
-    private static EntityMetadata Build(IEntityType entityType)
+    private static EntityMetadata? Build(IEntityType entityType, List<EntityDiscoveryIssue> issues)
     {
+        var routeName = GetRouteName(entityType);
         var keyProperties = entityType.FindPrimaryKey()?.Properties;
         if (keyProperties is null || keyProperties.Count != 1)
         {
-            throw new InvalidOperationException($"Entity '{entityType.ClrType.Name}' must have a single primary key.");
+            var reason = keyProperties is null
+                ? "has no primary key"
+                : "has a composite primary key";
+
+            issues.Add(new EntityDiscoveryIssue(
+                routeName,
+                $"Entity '{entityType.ClrType.Name}' {reason} and cannot be rendered yet.",
+                CanRender: false));
+            return null;
         }
 
         var keyProperty = keyProperties[0];
-
         var scalarProperties = entityType.GetProperties()
             .Select(property => new EntityPropertyMetadata(
                 property.Name,
@@ -40,42 +60,95 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 property.Name == keyProperty.Name))
             .ToList();
 
-        var referenceFields = entityType.GetForeignKeys()
-            .Where(foreignKey => foreignKey.DependentToPrincipal is not null)
-            .Where(foreignKey => foreignKey.Properties.Count == 1)
-            .Select(foreignKey => new
+        var referenceFields = new List<ReferenceFieldMetadata>();
+        var relatedPropertyMap = new Dictionary<string, EntityPropertyMetadata>(StringComparer.Ordinal);
+
+        foreach (var foreignKey in entityType.GetForeignKeys())
+        {
+            if (foreignKey.Properties.Count != 1)
             {
-                ForeignKey = foreignKey,
-                Property = scalarProperties.Single(property => property.Name == foreignKey.Properties[0].Name),
-                NavigationName = foreignKey.DependentToPrincipal!.Name,
+                issues.Add(new EntityDiscoveryIssue(
+                    routeName,
+                    $"Foreign key '{DescribeForeignKey(foreignKey)}' is composite and is not supported yet.",
+                    CanRender: true));
+                continue;
+            }
+
+            var foreignKeyProperty = scalarProperties.Single(property => property.Name == foreignKey.Properties[0].Name);
+            var relatedKey = foreignKey.PrincipalEntityType.FindPrimaryKey()?.Properties.SingleOrDefault();
+            if (relatedKey is null)
+            {
+                issues.Add(new EntityDiscoveryIssue(
+                    routeName,
+                    $"Foreign key '{foreignKeyProperty.Name}' points to '{foreignKey.PrincipalEntityType.ClrType.Name}', but that entity does not have a single primary key.",
+                    CanRender: true));
+                continue;
+            }
+
+            var relatedRouteName = GetRouteName(foreignKey.PrincipalEntityType);
+            var relatedDisplayPropertyName = ResolveRelatedDisplayPropertyName(foreignKey)
+                ?? ResolveRelatedDisplayPropertyName(foreignKey.PrincipalEntityType);
+
+            if (foreignKey.DependentToPrincipal is null)
+            {
+                if (foreignKey.Properties[0].IsShadowProperty())
+                {
+                    issues.Add(new EntityDiscoveryIssue(
+                        routeName,
+                        $"Foreign key '{foreignKeyProperty.Name}' has no CLR navigation property and cannot use the simple scalar fallback.",
+                        CanRender: true));
+                    continue;
+                }
+
+                relatedPropertyMap[foreignKeyProperty.Name] = foreignKeyProperty with
+                {
+                    RelatedClrType = foreignKey.PrincipalEntityType.ClrType,
+                    RelatedRouteName = relatedRouteName,
+                    RelatedDisplayPropertyName = relatedDisplayPropertyName
+                };
+                continue;
+            }
+
+            referenceFields.Add(new ReferenceFieldMetadata(
+                foreignKey,
+                foreignKeyProperty,
+                foreignKey.DependentToPrincipal!.Name,
+                foreignKey.PrincipalEntityType.ClrType,
+                relatedRouteName,
+                relatedDisplayPropertyName));
+
+            relatedPropertyMap[foreignKeyProperty.Name] = foreignKeyProperty with
+            {
                 RelatedClrType = foreignKey.PrincipalEntityType.ClrType,
-                RelatedDisplayPropertyName = ResolveRelatedDisplayPropertyName(foreignKey)
-            })
-            .ToList();
+                RelatedRouteName = relatedRouteName,
+                RelatedDisplayPropertyName = relatedDisplayPropertyName
+            };
+        }
 
         scalarProperties = scalarProperties
-            .Select(property =>
-            {
-                var referenceField = referenceFields.SingleOrDefault(field => field.Property.Name == property.Name);
-                return referenceField is null
-                    ? property
-                    : property with
-                    {
-                        RelatedClrType = referenceField.RelatedClrType,
-                        RelatedRouteName = GetRouteName(referenceField.ForeignKey.PrincipalEntityType),
-                        RelatedDisplayPropertyName = referenceField.RelatedDisplayPropertyName
-                    };
-            })
+            .Select(property => relatedPropertyMap.TryGetValue(property.Name, out var relatedProperty)
+                ? relatedProperty
+                : property)
             .ToList();
 
         var suppressedScalarPropertyNames = referenceFields
             .Select(field => field.Property.Name)
             .ToHashSet(StringComparer.Ordinal);
 
-        var collectionFields = entityType.GetSkipNavigations()
-            .Where(navigation => navigation.IsCollection)
-            .Where(navigation => navigation.TargetEntityType.FindPrimaryKey()?.Properties.Count == 1)
-            .Select(navigation => new EditableFieldMetadata(
+        var collectionFields = new List<EditableFieldMetadata>();
+        foreach (var navigation in entityType.GetSkipNavigations().Where(navigation => navigation.IsCollection))
+        {
+            var targetPrimaryKey = navigation.TargetEntityType.FindPrimaryKey()?.Properties;
+            if (targetPrimaryKey is null || targetPrimaryKey.Count != 1)
+            {
+                issues.Add(new EntityDiscoveryIssue(
+                    routeName,
+                    $"Collection navigation '{navigation.Name}' targets '{navigation.TargetEntityType.ClrType.Name}', which does not have a single primary key.",
+                    CanRender: true));
+                continue;
+            }
+
+            collectionFields.Add(new EditableFieldMetadata(
                 navigation.Name,
                 EditableFieldKind.Collection,
                 typeof(string[]),
@@ -84,8 +157,8 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 navigation.TargetEntityType.ClrType,
                 false,
                 CollectionRelationshipKind.ManyToMany,
-                ResolveRelatedDisplayPropertyName(navigation.TargetEntityType)))
-            .ToList();
+                ResolveRelatedDisplayPropertyName(navigation.TargetEntityType)));
+        }
 
         var oneToManyFields = new List<EditableFieldMetadata>();
         var relatedManagementLinks = new List<RelatedEntityManagementLink>();
@@ -121,7 +194,7 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
         }
 
         var primaryKeyMetadata = scalarProperties.Single(property => property.IsPrimaryKey);
-        var editableProperties = scalarProperties.Where(x => x.IsEditableOnUpdate).ToList();
+        var editableProperties = scalarProperties.Where(property => property.IsEditableOnUpdate).ToList();
 
         var createEditableFields = scalarProperties
             .Where(property => property.IsEditableOnCreate)
@@ -160,7 +233,7 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
 
         return new EntityMetadata(
             entityType.ClrType.Name,
-            GetRouteName(entityType),
+            routeName,
             entityType.ClrType,
             primaryKeyMetadata,
             scalarProperties,
@@ -197,6 +270,14 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
 
     private sealed record CollectionNavigationClassification(IForeignKey ForeignKey, bool IsManagementLink);
 
+    private sealed record ReferenceFieldMetadata(
+        IForeignKey ForeignKey,
+        EntityPropertyMetadata Property,
+        string NavigationName,
+        Type RelatedClrType,
+        string RelatedRouteName,
+        string? RelatedDisplayPropertyName);
+
     private static EditableFieldMetadata CreateScalarField(EntityPropertyMetadata property)
         => new(
             property.Name,
@@ -225,6 +306,10 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
 
     private static string? ResolveRelatedDisplayPropertyName(IEntityType entityType)
         => entityType.ClrType.GetCustomAttribute<EfUiDisplayColumnAttribute>()?.PropertyName;
+
+    private static string DescribeForeignKey(IForeignKey foreignKey)
+        => foreignKey.DependentToPrincipal?.Name
+           ?? string.Join(", ", foreignKey.Properties.Select(property => property.Name));
 
     private static string GetRouteName(IEntityType entityType)
     {

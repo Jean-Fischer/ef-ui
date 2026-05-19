@@ -77,6 +77,7 @@ public static class RenderedListPayloadFactory
             status = new
             {
                 items = BuildStatusItems(view),
+                warnings = view.Warnings,
                 errors = view.Errors,
                 emptyMessage = view.Filters.Count == 0 && view.Sorts.Count == 0
                     ? "No active filters or sorts"
