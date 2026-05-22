@@ -14,3 +14,15 @@ description = "Pack and publish EfUi.AspNetCore to nuget.org"
 depends = ["test"]
 run = "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/release-nuget.ps1"
 run_windows = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\release-nuget.ps1"
+
+[tasks.playwright-install]
+description = "Install the browser binaries required for Playwright tests"
+depends = ["build"]
+run = "pwsh -NoProfile -ExecutionPolicy Bypass -File tests/EfUi.AspNetCore.Tests/bin/Release/net8.0/playwright.ps1 install chromium"
+run_windows = "powershell -NoProfile -ExecutionPolicy Bypass -File tests\\EfUi.AspNetCore.Tests\\bin\\Release\\net8.0\\playwright.ps1 install chromium"
+
+[tasks.test-browser]
+description = "Run the Playwright browser coverage for the Chinook edit page"
+depends = ["playwright-install"]
+run = "dotnet test tests/EfUi.AspNetCore.Tests/EfUi.AspNetCore.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ChinookPlaywrightTests"
+run_windows = "dotnet test tests\\EfUi.AspNetCore.Tests\\EfUi.AspNetCore.Tests.csproj -c Release --no-build --filter FullyQualifiedName~ChinookPlaywrightTests"

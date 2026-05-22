@@ -57,6 +57,21 @@ Open `http://localhost:5000/` or the URL shown by ASP.NET Core.
 - Package details: `src/EfUi.AspNetCore/README.md`
 - Release and publishing: `docs/publishing.md`
 
+## Browser tests
+
+Before the first run in a fresh checkout, trust the mise config once:
+
+```bash
+mise trust
+```
+
+Then install the Playwright browser binary and run the browser coverage:
+
+```bash
+mise run playwright-install
+mise run test-browser
+```
+
 ## License
 
 MIT — see `LICENSE`.
