@@ -26,4 +26,7 @@ src/EfUi.SampleHost/sample.db-wal
 # Local git worktrees
 .worktrees/
 
+# Build artifacts produced by release tasks
+.artifacts/
+
 .sonarqube

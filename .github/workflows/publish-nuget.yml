@@ -1,0 +1,49 @@
+name: Publish NuGet package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version to publish, for example 1.2.3 or 1.2.3-preview.1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nuget-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Set up mise
+        uses: jdx/mise-action@v4
+        with:
+          install: false
+
+      - name: Validate version input
+        shell: bash
+        run: |
+          version='${{ inputs.version }}'
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: $version"
+            exit 1
+          fi
+
+      - name: Build, test, pack, and publish
+        env:
+          PACKAGE_VERSION: ${{ inputs.version }}
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: mise run release-nuget
