@@ -1,5 +1,10 @@
 # EF UI
 
+## Compatibility
+
+EF UI targets .NET 8 and is intended to work with .NET 8+ host applications.
+The current baseline is EF Core 8, and the project has also been verified on .NET 10 with EF Core 10.0.8.
+
 ## Run
 
 ```bash
