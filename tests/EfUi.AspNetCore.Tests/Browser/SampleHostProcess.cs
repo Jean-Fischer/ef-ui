@@ -34,12 +34,7 @@ internal sealed class SampleHostProcess : IAsyncDisposable
 
         var port = GetFreeTcpPort();
         var baseUri = new Uri($"http://127.0.0.1:{port}");
-        var hostDll = Path.GetFullPath(Path.Combine(repoRoot, "src", "EfUi.SampleHost", "bin", "Debug", "net8.0", "EfUi.SampleHost.dll"));
-
-        if (!File.Exists(hostDll))
-        {
-            throw new FileNotFoundException($"Expected built sample host at '{hostDll}'. Build the solution before running Playwright tests.", hostDll);
-        }
+        var hostDll = GetBuiltSampleHostPath(repoRoot);
 
         var output = new StringBuilder();
         var startInfo = new ProcessStartInfo
@@ -136,6 +131,25 @@ internal sealed class SampleHostProcess : IAsyncDisposable
         }
 
         throw new InvalidOperationException("Could not locate the repository root containing db/chinook.db and src/EfUi.SampleHost/sample.db.");
+    }
+
+    private static string GetBuiltSampleHostPath(string repoRoot)
+    {
+        var candidates = new[]
+        {
+            Path.Combine(repoRoot, "src", "EfUi.SampleHost", "bin", "Debug", "net8.0", "EfUi.SampleHost.dll"),
+            Path.Combine(repoRoot, "src", "EfUi.SampleHost", "bin", "Release", "net8.0", "EfUi.SampleHost.dll")
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (File.Exists(candidate))
+            {
+                return Path.GetFullPath(candidate);
+            }
+        }
+
+        throw new FileNotFoundException($"Expected built sample host in one of the following locations: {string.Join(", ", candidates)}", candidates[0]);
     }
 
     private static int GetFreeTcpPort()

@@ -66,7 +66,7 @@ public sealed class ChinookPlaywrightTests : IAsyncLifetime
         var page = _page ?? throw new InvalidOperationException("Playwright page was not initialized.");
 
         await AuthenticateAsync(page, "Anonymous");
-        var anonymousStatus = await page.EvaluateAsync<int>("async () => { const response = await fetch('/chinook'); return response.status; }");
+        var anonymousStatus = await page.EvaluateAsync<int>("async () => { const response = await fetch('/chinook/playlists'); return response.status; }");
         anonymousStatus.Should().Be(401);
 
         await AuthenticateAsync(page, "ReadOnly");
