@@ -2,7 +2,7 @@
 
 > Add a built-in CRUD UI to your existing EF Core app.
 
-`EfUi.AspNetCore` adds EF UI to an ASP.NET Core app that already has a `DbContext` registered in dependency injection. It works with .NET 8+ and any EF Core provider.
+`EfUi.AspNetCore` adds EF UI to an ASP.NET Core app that already has a `DbContext` registered in dependency injection. It works with .NET 8+, EF Core 8+, and is designed to be provider-agnostic. The sample host in this repository uses SQLite.
 
 ## Install
 
@@ -49,3 +49,11 @@ app.Run();
 - The package exposes the `UseEfUi` ASP.NET Core extension method.
 - The UI is designed for existing ASP.NET Core apps with a registered EF Core `DbContext`.
 - When authorization is enabled, browsing routes accept `ReadOnly` or `Edit`, while create, update, and delete routes require `Edit`.
+
+## Current limitations
+
+- Entities must have a single-column primary key.
+- Composite primary keys are not supported yet.
+- Composite foreign keys are not supported yet.
+- The editor currently supports common scalar CLR types such as `string`, numeric types, `bool`, `DateTime`, `Guid`, and enums.
+- Very large tables are still rendered through in-memory row loading, so server-side query execution and pagination are not fully provider-driven yet.
