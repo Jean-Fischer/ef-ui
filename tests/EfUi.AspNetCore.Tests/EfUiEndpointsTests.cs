@@ -394,19 +394,18 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var readmePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../README.md"));
         var readme = File.ReadAllText(readmePath);
 
-        readme.Should().Contain("breadcrumb navigation");
-        readme.Should().Contain("filter.N.field");
-        readme.Should().Contain("sort.N.dir");
-        readme.Should().Contain("Tabulator header sorting and header filters");
-        readme.Should().Contain("fetch JSON from");
-        readme.Should().Contain("refresh rows in place");
-        readme.Should().Contain("address bar");
-        readme.Should().Contain("without full-page blink");
-        readme.Should().Contain("server owns filtering and sorting semantics");
-        readme.Should().Contain("compact table status strip");
-        readme.Should().Contain("related-row links can open child tables with a visible pre-applied filter in the URL");
-        readme.Should().Contain("server-rendered HTML table as fallback");
-        readme.Should().Contain("in-grid loading while it refreshes table data");
+        readme.Should().Contain("CRUD pages over your EF Core entities");
+        readme.Should().Contain("relationship-aware forms and list pages");
+        readme.Should().Contain("server-rendered fallback with enhanced table browsing");
+        readme.Should().Contain("provider-agnostic behavior across EF Core database providers");
+        readme.Should().Contain("RoutePrefix");
+        readme.Should().Contain("RequireAuthorization = true");
+        readme.Should().Contain("EnableInProduction = true");
+        readme.Should().Contain("ReadOnlyRoleName");
+        readme.Should().Contain("EditRoleName");
+        readme.Should().Contain("Package details: `src/EfUi.AspNetCore/README.md`");
+        readme.Should().Contain("Release and publishing: `docs/publishing.md`");
+        readme.Should().Contain("Open `http://localhost:5000/` or the URL shown by ASP.NET Core.");
     }
 
     [Fact]
