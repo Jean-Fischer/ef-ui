@@ -1,5 +1,16 @@
-[tasks.sonar]
-description = "Run the SonarCloud scan and write local summary artifacts"
-run = "pwsh -NoProfile -File scripts/sonar-scan.ps1"
-run_windows = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\sonar-scan.ps1"
-alias = "sonar-scan"
+[tasks.build]
+description = "Build the solution in Release"
+run = "dotnet build EfUi.sln -c Release"
+run_windows = "dotnet build EfUi.sln -c Release"
+
+[tasks.test]
+description = "Run the test suite"
+depends = ["build"]
+run = "dotnet test EfUi.sln -c Release --no-build"
+run_windows = "dotnet test EfUi.sln -c Release --no-build"
+
+[tasks.release-nuget]
+description = "Pack and publish EfUi.AspNetCore to nuget.org"
+depends = ["test"]
+run = "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/release-nuget.ps1"
+run_windows = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\release-nuget.ps1"

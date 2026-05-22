@@ -1,8 +1,27 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>EfUi.AspNetCore</PackageId>
+    <IsPackable>true</IsPackable>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <Authors>Jean Fischer</Authors>
+    <Description>ASP.NET Core UI and route extensions for working with Entity Framework Core DbContexts.</Description>
+    <PackageTags>aspnetcore;efcore;admin;crud;ui</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/Jean-Fischer/ef-ui</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Jean-Fischer/ef-ui</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
   <ItemGroup>
-    <ProjectReference Include="..\EfUi.Core\EfUi.Core.csproj" />
+    <Compile Include="..\EfUi.Core\**\*.cs" Exclude="..\EfUi.Core\bin\**\*;..\EfUi.Core\obj\**\*" Link="EfUi.Core\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
+
   <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.11" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
   </ItemGroup>
 </Project>

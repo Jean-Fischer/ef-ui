@@ -1,9 +1,21 @@
 # EF UI
 
+## NuGet package
+
+The publishable package is `EfUi.AspNetCore`.
+
+- targets .NET 8+
+- validated against EF Core 8.x
+- works with any EF Core provider
+- the sample host in this repository uses SQLite, but the package itself is provider-agnostic
+
+For package-specific setup and usage, see `src/EfUi.AspNetCore/README.md`.
+For release workflow notes, see `docs/publishing.md`.
+
 ## Compatibility
 
 EF UI targets .NET 8 and is intended to work with .NET 8+ host applications.
-The current baseline is EF Core 8, and the project has also been verified on .NET 10 with EF Core 10.0.8.
+The current package baseline is EF Core 8.0.11.
 
 ## Run
 
