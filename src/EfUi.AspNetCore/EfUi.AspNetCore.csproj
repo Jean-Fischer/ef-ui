@@ -8,6 +8,7 @@
     <PackageTags>aspnetcore;efcore;admin;crud;ui</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/Jean-Fischer/ef-ui</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/Jean-Fischer/ef-ui</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
