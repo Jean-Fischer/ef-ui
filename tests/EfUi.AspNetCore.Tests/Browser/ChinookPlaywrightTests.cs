@@ -17,8 +17,7 @@ public sealed class ChinookPlaywrightTests : IAsyncLifetime
     {
         var page = _page ?? throw new InvalidOperationException("Playwright page was not initialized.");
 
-        await page.GotoAsync("/");
-        await page.EvaluateAsync("async () => { await fetch('/auth/edit', { method: 'POST' }); }");
+        await AuthenticateAsync(page, "Edit");
         await page.GotoAsync("/");
         (await page.GetByText("Current profile: Edit").IsVisibleAsync()).Should().BeTrue();
 
@@ -59,6 +58,77 @@ public sealed class ChinookPlaywrightTests : IAsyncLifetime
 
         (await hiddenInputs.CountAsync()).Should().Be(initialHiddenCount);
         (await selectedChips.CountAsync()).Should().Be(initialChipCount);
+    }
+
+    [Fact]
+    public async Task Playlist_crud_flow_respects_anonymous_and_readonly_access_before_creating_editing_and_deleting()
+    {
+        var page = _page ?? throw new InvalidOperationException("Playwright page was not initialized.");
+
+        await AuthenticateAsync(page, "Anonymous");
+        var anonymousStatus = await page.EvaluateAsync<int>("async () => { const response = await fetch('/chinook'); return response.status; }");
+        anonymousStatus.Should().Be(401);
+
+        await AuthenticateAsync(page, "ReadOnly");
+        var readonlyResponse = await page.GotoAsync("/chinook/playlists");
+        readonlyResponse?.Status.Should().Be(200);
+        (await page.Locator("a.efui-primary-link[href='/chinook/playlists/new']").CountAsync()).Should().Be(0);
+        (await page.Locator(".efui-row-actions").CountAsync()).Should().Be(0);
+
+        var readonlyMutationStatus = await page.EvaluateAsync<int>("async () => { const response = await fetch('/chinook/playlists', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'Name=ShouldFail' }); return response.status; }");
+        readonlyMutationStatus.Should().Be(403);
+
+        await AuthenticateAsync(page, "Edit");
+        var uniqueSuffix = Guid.NewGuid().ToString("N");
+        var playlistName = $"Playwright Playlist {uniqueSuffix}";
+        var updatedPlaylistName = $"Playwright Playlist Updated {uniqueSuffix}";
+
+        var createResponse = await page.GotoAsync("/chinook/playlists/new");
+        createResponse?.Status.Should().Be(200);
+        await page.Locator("input[name='Name']").FillAsync(playlistName);
+        await page.Locator("form.efui-form button.efui-button[type='submit']").ClickAsync();
+        await page.WaitForURLAsync("**/chinook/playlists");
+
+        var createdRow = page.Locator("table.efui-table tbody tr", new() { HasText = playlistName });
+        await createdRow.WaitForAsync(new() { State = WaitForSelectorState.Attached });
+        (await createdRow.CountAsync()).Should().Be(1);
+        var editUrl = await createdRow.Locator("a.efui-row-action-link").GetAttributeAsync("href");
+        editUrl.Should().NotBeNullOrWhiteSpace();
+
+        var editResponse = await page.GotoAsync(editUrl!);
+        editResponse?.Status.Should().Be(200);
+        await page.Locator("input[name='Name']").FillAsync(updatedPlaylistName);
+        await page.Locator("form.efui-form button.efui-button[type='submit']").ClickAsync();
+        await page.WaitForURLAsync("**/chinook/playlists");
+
+        var updatedRow = page.Locator("table.efui-table tbody tr", new() { HasText = updatedPlaylistName });
+        await updatedRow.WaitForAsync(new() { State = WaitForSelectorState.Attached });
+        (await updatedRow.CountAsync()).Should().Be(1);
+        (await page.Locator("table.efui-table tbody tr", new() { HasText = playlistName }).CountAsync()).Should().Be(0);
+
+        var deleteUrl = await updatedRow.Locator("form.efui-row-action-form").GetAttributeAsync("action");
+        deleteUrl.Should().NotBeNullOrWhiteSpace();
+
+        var deleteSucceeded = await page.EvaluateAsync<bool>($"async () => {{ const response = await fetch('{deleteUrl}', {{ method: 'POST' }}); return response.ok; }}");
+        deleteSucceeded.Should().BeTrue();
+
+        var listResponse = await page.GotoAsync("/chinook/playlists");
+        listResponse?.Status.Should().Be(200);
+        (await page.Locator("table.efui-table tbody tr", new() { HasText = updatedPlaylistName }).CountAsync()).Should().Be(0);
+    }
+
+    private static async Task AuthenticateAsync(IPage page, string role)
+    {
+        var endpoint = role switch
+        {
+            "Anonymous" => "/auth/anonymous",
+            "ReadOnly" => "/auth/readonly",
+            "Edit" => "/auth/edit",
+            _ => throw new ArgumentOutOfRangeException(nameof(role), role, "Unsupported authentication role")
+        };
+
+        await page.GotoAsync("/");
+        await page.EvaluateAsync($"async () => {{ await fetch('{endpoint}', {{ method: 'POST' }}); }}");
     }
 
     public async Task InitializeAsync()
