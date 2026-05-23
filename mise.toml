@@ -12,14 +12,20 @@ run_windows = "dotnet test EfUi.sln -c Release --no-build"
 [tasks.release-nuget]
 description = "Pack and publish EfUi.AspNetCore to nuget.org"
 depends = ["test"]
-run = "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/release-nuget.ps1"
-run_windows = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\release-nuget.ps1"
+run = [
+    "dotnet pack src/EfUi.AspNetCore/EfUi.AspNetCore.csproj -c Release --no-build --no-restore -o .artifacts/nuget -p:ContinuousIntegrationBuild=true -p:PackageVersion=$PACKAGE_VERSION",
+    "dotnet nuget push .artifacts/nuget/EfUi.AspNetCore.$PACKAGE_VERSION.nupkg --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate",
+]
+run_windows = [
+    "dotnet pack src\\EfUi.AspNetCore\\EfUi.AspNetCore.csproj -c Release --no-build --no-restore -o .artifacts\\nuget -p:ContinuousIntegrationBuild=true -p:PackageVersion=%PACKAGE_VERSION%",
+    "dotnet nuget push .artifacts\\nuget\\EfUi.AspNetCore.%PACKAGE_VERSION%.nupkg --api-key %NUGET_API_KEY% --source https://api.nuget.org/v3/index.json --skip-duplicate",
+]
 
 [tasks.playwright-install]
 description = "Install the browser binaries required for Playwright tests"
 depends = ["build"]
-run = "pwsh -NoProfile -ExecutionPolicy Bypass -File tests/EfUi.AspNetCore.Tests/bin/Release/net8.0/playwright.ps1 install chromium"
-run_windows = "powershell -NoProfile -ExecutionPolicy Bypass -File tests\\EfUi.AspNetCore.Tests\\bin\\Release\\net8.0\\playwright.ps1 install chromium"
+run = "bash tests/EfUi.AspNetCore.Tests/bin/Release/net8.0/playwright.sh install chromium"
+run_windows = "tests\\EfUi.AspNetCore.Tests\\bin\\Release\\net8.0\\playwright.cmd install chromium"
 
 [tasks.test-browser]
 description = "Run the Playwright browser coverage for the Chinook edit page"
