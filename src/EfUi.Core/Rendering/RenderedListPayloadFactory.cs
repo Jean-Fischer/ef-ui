@@ -85,9 +85,7 @@ public static class RenderedListPayloadFactory
                 items = BuildStatusItems(view),
                 warnings = view.Warnings,
                 errors = view.Errors,
-                emptyMessage = view.Filters.Count == 0 && view.Sorts.Count == 0
-                    ? "No active filters or sorts"
-                    : null,
+                emptyMessage = (string?)null,
                 offset = view.Offset,
                 limit = view.Limit
             }

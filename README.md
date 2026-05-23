@@ -54,7 +54,7 @@ Open `http://localhost:5000/` or the URL shown by ASP.NET Core.
 
 ## Docs
 
-- Package details: `src/EfUi.AspNetCore/README.md`
+- Package details: [src/EfUi.AspNetCore/README.md](src/EfUi.AspNetCore/README.md)
 - Release and publishing: `docs/publishing.md`
 
 ## Browser tests

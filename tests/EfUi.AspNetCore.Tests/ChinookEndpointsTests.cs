@@ -127,6 +127,29 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     }
 
     [Fact]
+    public async Task Get_customers_list_uses_employee_full_name_labels_with_fk_links()
+    {
+        var html = await _client.GetStringAsync("/chinook/customers");
+
+        html.Should().Contain("/chinook/employees/3/edit");
+        html.Should().Contain("Jane Peacock");
+        html.Should().NotContain("Sales Support Agent");
+    }
+
+    [Fact]
+    public async Task Get_album_edit_form_renders_tracks_chip_picker_shell()
+    {
+        var html = await _client.GetStringAsync("/chinook/albums/1/edit");
+
+        html.Should().Contain("efui-chip-picker");
+        html.Should().Contain("efui-chip-picker-fallback");
+        html.Should().Contain("data-role=\"chip-picker-search\"");
+        html.Should().Contain("name=\"Tracks\" type=\"checkbox\"");
+        html.Should().Contain("name=\"Tracks\" type=\"checkbox\" value=\"3\" disabled");
+        html.Should().NotContain("Manage related rows");
+    }
+
+    [Fact]
     public async Task Get_playlist_edit_form_renders_tracks_chip_picker_shell()
     {
         var html = await _client.GetStringAsync("/chinook/playlists/1/edit");
@@ -219,8 +242,8 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         var html = await _client.GetStringAsync("/chinook/invoice_items?filter.0.field=InvoiceId&filter.0.op=eq&filter.0.value=1");
 
         html.Should().Contain("InvoiceId eq 1");
-        html.Should().Contain("class=\"efui-table-status\"");
-        html.Should().Contain("data-role=\"efui-table-status\"");
+        html.Should().NotContain("class=\"efui-table-status\"");
+        html.Should().NotContain("data-role=\"efui-table-status\"");
         html.Should().NotContain("class=\"efui-query-builder\"");
 
         using var config = GetTableConfig(html);
@@ -249,8 +272,8 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/chinook\">Chinook</a>");
         html.Should().Contain("<span class=\"efui-breadcrumb-current\">Track</span>");
         html.Should().Contain("MediaTypeId eq 1");
-        html.Should().Contain("class=\"efui-table-status\"");
-        html.Should().Contain("data-role=\"efui-table-status\"");
+        html.Should().NotContain("class=\"efui-table-status\"");
+        html.Should().NotContain("data-role=\"efui-table-status\"");
         html.Should().NotContain("data-role=\"efui-table-loading\"");
         html.Should().NotContain("class=\"efui-query-builder\"");
         Regex.IsMatch(html, @"<tbody>\s*<tr>", RegexOptions.Singleline).Should().BeTrue();

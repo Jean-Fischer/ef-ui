@@ -146,7 +146,8 @@ public class HtmlPageRendererTests
         html.Should().Contain("<section class=\"efui-surface\">");
         html.Should().Contain("<div class=\"efui-page-actions\">");
         html.Should().Contain("<a class=\"efui-primary-link\" href=\"/efui/users/new\">Create New</a>");
-        html.Should().Contain("<section class=\"efui-table-status\"");
+        html.Should().NotContain("<section class=\"efui-table-status\"");
+        html.Should().NotContain("data-role=\"efui-table-status\"");
         html.Should().Contain("Name contains Ada");
         html.Should().Contain("Name asc");
         html.Should().NotContain("class=\"efui-query-builder\"");

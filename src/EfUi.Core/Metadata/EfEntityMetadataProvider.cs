@@ -296,16 +296,16 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
         }
 
         var foreignKey = matchingForeignKeys[0];
-        var hasForeignKeyToDifferentPrincipal = navigation.TargetEntityType.GetForeignKeys()
-            .Any(candidate => candidate != foreignKey && candidate.PrincipalEntityType != entityType);
-
-        if (hasForeignKeyToDifferentPrincipal)
+        if (ShouldRenderAsManagementLink(navigation.TargetEntityType))
         {
             return new CollectionNavigationClassification(foreignKey, IsManagementLink: true);
         }
 
         return new CollectionNavigationClassification(foreignKey, IsManagementLink: false);
     }
+
+    private static bool ShouldRenderAsManagementLink(IEntityType targetEntityType)
+        => targetEntityType.GetForeignKeys().Count() == 2;
 
     private sealed record CollectionNavigationClassification(IForeignKey ForeignKey, bool IsManagementLink);
 
