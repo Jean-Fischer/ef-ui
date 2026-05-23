@@ -172,6 +172,23 @@ public class EntityMetadataProviderTests
     }
 
     [Fact]
+    public void GetEntity_exposes_album_tracks_as_an_update_only_collection_field()
+    {
+        using var db = CreateAlbumTracksDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var album = sut.GetEntity(db, "albums");
+        var tracks = album.UpdateEditableFields.Single(x => x.Name == "Tracks");
+
+        tracks.Kind.Should().Be(EditableFieldKind.Collection);
+        tracks.CollectionRelationshipKind.Should().Be(CollectionRelationshipKind.OneToMany);
+        tracks.ScalarPropertyName.Should().Be("AlbumId");
+        tracks.NavigationPropertyName.Should().Be("Tracks");
+        tracks.RelatedClrType.Should().Be(typeof(TrackRow));
+        tracks.IsRequired.Should().BeFalse();
+    }
+
+    [Fact]
     public void GetEntity_exposes_payload_join_collection_as_management_link()
     {
         using var db = CreatePayloadJoinDb();
@@ -294,6 +311,18 @@ public class EntityMetadataProviderTests
         return db;
     }
 
+    private static AlbumTracksDbContext CreateAlbumTracksDb()
+    {
+        var options = new DbContextOptionsBuilder<AlbumTracksDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        var db = new AlbumTracksDbContext(options);
+        db.Database.OpenConnection();
+        db.Database.EnsureCreated();
+        return db;
+    }
+
     private static PayloadJoinDbContext CreatePayloadJoinDb()
     {
         var options = new DbContextOptionsBuilder<PayloadJoinDbContext>()
@@ -403,6 +432,28 @@ public class EntityMetadataProviderTests
         }
     }
 
+    private sealed class AlbumTracksDbContext(DbContextOptions<AlbumTracksDbContext> options) : DbContext(options)
+    {
+        public DbSet<AlbumRow> Albums => Set<AlbumRow>();
+        public DbSet<TrackRow> Tracks => Set<TrackRow>();
+        public DbSet<GenreRow> Genres => Set<GenreRow>();
+        public DbSet<MediaTypeRow> MediaTypes => Set<MediaTypeRow>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<AlbumRow>().ToTable("albums");
+            modelBuilder.Entity<TrackRow>(builder =>
+            {
+                builder.ToTable("tracks");
+                builder.HasOne(x => x.Album).WithMany(x => x.Tracks).HasForeignKey(x => x.AlbumId);
+                builder.HasOne(x => x.Genre).WithMany().HasForeignKey(x => x.GenreId);
+                builder.HasOne(x => x.MediaType).WithMany().HasForeignKey(x => x.MediaTypeId);
+            });
+            modelBuilder.Entity<GenreRow>().ToTable("genres");
+            modelBuilder.Entity<MediaTypeRow>().ToTable("media_types");
+        }
+    }
+
     private sealed class PayloadJoinDbContext(DbContextOptions<PayloadJoinDbContext> options) : DbContext(options)
     {
         public DbSet<Order> Orders => Set<Order>();
@@ -501,6 +552,33 @@ public class EntityMetadataProviderTests
     private sealed class ReportRow
     {
         public string Name { get; set; } = string.Empty;
+    }
+
+    private sealed class AlbumRow
+    {
+        public int Id { get; set; }
+        public ICollection<TrackRow> Tracks { get; set; } = [];
+    }
+
+    private sealed class TrackRow
+    {
+        public int Id { get; set; }
+        public int? AlbumId { get; set; }
+        public AlbumRow? Album { get; set; }
+        public int? GenreId { get; set; }
+        public GenreRow? Genre { get; set; }
+        public int MediaTypeId { get; set; }
+        public MediaTypeRow MediaType { get; set; } = null!;
+    }
+
+    private sealed class GenreRow
+    {
+        public int Id { get; set; }
+    }
+
+    private sealed class MediaTypeRow
+    {
+        public int Id { get; set; }
     }
 
     private sealed class Order

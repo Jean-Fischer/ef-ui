@@ -663,8 +663,17 @@ public static class EfUiApplicationBuilderExtensions
     private static IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>> BuildFieldOptions(DbContext dbContext, EntityMetadata metadata, object? model, IReadOnlyDictionary<string, string[]>? submittedValues)
     {
         var options = new Dictionary<string, IReadOnlyList<RelatedEntityOption>>(StringComparer.OrdinalIgnoreCase);
+        var fields = metadata.CreateEditableFields.Concat(metadata.UpdateEditableFields).DistinctBy(field => field.Name).ToList();
+        var oneToManyFields = fields.Where(field => field.Kind == EditableFieldKind.Collection && field.CollectionRelationshipKind == CollectionRelationshipKind.OneToMany && field.RelatedClrType is not null).ToList();
+        var ownerLabels = oneToManyFields.Count == 0
+            ? null
+            : ReadRows(dbContext, metadata.ClrType)
+                .ToDictionary(
+                    row => FormatValue(row.GetType().GetProperty(metadata.PrimaryKeyProperty.Name)?.GetValue(row)),
+                    row => GetRelatedEntityLabel(row, metadata.PrimaryKeyProperty.Name),
+                    StringComparer.Ordinal);
 
-        foreach (var field in metadata.CreateEditableFields.Concat(metadata.UpdateEditableFields).DistinctBy(field => field.Name))
+        foreach (var field in fields)
         {
             if (field.Kind is not EditableFieldKind.Reference and not EditableFieldKind.Collection || field.RelatedClrType is null)
             {
@@ -673,14 +682,14 @@ public static class EfUiApplicationBuilderExtensions
 
             var selectedValues = GetSelectedValues(dbContext, field, model, submittedValues);
             options[field.Name] = ReadRows(dbContext, field.RelatedClrType)
-                .Select(row => CreateRelatedEntityOption(dbContext, metadata, field, row, selectedValues, model))
+                .Select(row => CreateRelatedEntityOption(dbContext, metadata, field, row, selectedValues, model, ownerLabels))
                 .ToList();
         }
 
         return options;
     }
 
-    private static RelatedEntityOption CreateRelatedEntityOption(DbContext dbContext, EntityMetadata metadata, EditableFieldMetadata field, object row, HashSet<string> selectedValues, object? model)
+    private static RelatedEntityOption CreateRelatedEntityOption(DbContext dbContext, EntityMetadata metadata, EditableFieldMetadata field, object row, HashSet<string> selectedValues, object? model, IReadOnlyDictionary<string, string>? ownerLabels)
     {
         var relatedClrType = field.RelatedClrType
             ?? throw new InvalidOperationException($"Field '{field.Name}' is missing a related entity type.");
@@ -703,10 +712,9 @@ public static class EfUiApplicationBuilderExtensions
             var currentParentKey = model.GetType().GetProperty(metadata.PrimaryKeyProperty.Name)?.GetValue(model);
             if (ownerValue is not null && !Equals(ownerValue, currentParentKey))
             {
-                var owner = dbContext.Find(metadata.ClrType, ownerValue);
-                var ownerLabel = owner is null
-                    ? FormatValue(ownerValue)
-                    : GetRelatedEntityLabel(owner, metadata.PrimaryKeyProperty.Name);
+                var ownerLabel = ownerLabels is not null && ownerLabels.TryGetValue(FormatValue(ownerValue), out var resolvedOwnerLabel)
+                    ? resolvedOwnerLabel
+                    : FormatValue(ownerValue);
 
                 return new RelatedEntityOption(value, label, selected, Disabled: true, Description: $"assigned to {ownerLabel}");
             }

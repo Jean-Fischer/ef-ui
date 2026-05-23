@@ -473,6 +473,12 @@ internal static class EfUiFormCss
   background: #f8fafc;
 }
 
+.efui-chip-picker-result:disabled,
+.efui-chip-picker-result-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .efui-chip-picker-empty {
   color: #6b7280;
   font-size: 0.95rem;

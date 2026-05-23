@@ -44,6 +44,27 @@ app.Run();
 - server-rendered fallback with enhanced table browsing
 - provider-agnostic behavior across EF Core database providers
 
+## Model annotations
+
+`EfUi.Core.Metadata.EfUiDisplayColumnAttribute` lets you control which property EF UI uses as the display label for related rows and foreign-key dropdowns.
+
+You can apply it to:
+
+- a class, to set the default display property for that entity
+- a navigation property, to override the display property for one relationship
+
+A common pattern is to keep presentation logic in a partial class and expose a computed property:
+
+```csharp
+[EfUiDisplayColumn(nameof(FullName))]
+public partial class Employee
+{
+    public string FullName => $"{FirstName} {LastName}";
+}
+```
+
+If no attribute is present, EF UI falls back to `Name`, `Title`, `Email`, then the primary key.
+
 ## Notes
 
 - The package exposes the `UseEfUi` ASP.NET Core extension method.

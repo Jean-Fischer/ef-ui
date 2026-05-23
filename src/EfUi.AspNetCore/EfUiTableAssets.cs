@@ -36,10 +36,6 @@ document.addEventListener('DOMContentLoaded', function () {
       clearIndexedQuery(params, 'filter', ['field', 'op', 'value']);
     }
 
-    function clearSortQuery(params) {
-      clearIndexedQuery(params, 'sort', ['field', 'dir']);
-    }
-
     function isBlankFilterValue(value) {
       return value === null || value === undefined || String(value).trim() === '';
     }
@@ -66,8 +62,12 @@ document.addEventListener('DOMContentLoaded', function () {
       var warnings = Array.isArray(status.warnings) ? status.warnings : [];
       var errors = Array.isArray(status.errors) ? status.errors : [];
       var items = Array.isArray(status.items) ? status.items : [];
-      var emptyMessage = status.emptyMessage || 'No active filters or sorts';
       var html = '';
+      var hasContent = warnings.length > 0 || errors.length > 0 || items.length > 0;
+      if (!hasContent) {
+        statusHost.innerHTML = '';
+        return;
+      }
 
       if (warnings.length > 0) {
         html += '<div class="efui-warning-summary" data-role="efui-table-status-warnings">'
@@ -85,9 +85,7 @@ document.addEventListener('DOMContentLoaded', function () {
           + '</div>';
       }
 
-      if (items.length === 0) {
-        html += '<div class="efui-table-status-empty" data-role="efui-table-status-empty">' + escapeHtml(emptyMessage) + '</div>';
-      } else {
+      if (items.length > 0) {
         html += '<div class="efui-table-status-items" data-role="efui-table-status-items">'
           + items.map(function (item) {
               return '<div class="efui-table-status-item">' + escapeHtml(item) + '</div>';
@@ -111,25 +109,6 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
-    var listUrl = config.listUrl || window.location.pathname;
-    var dataUrl = config.dataUrl || (listUrl + '/data');
-    var columnMap = {};
-    var readyForNavigation = false;
-    var applyingResponse = false;
-    var pendingRequestId = 0;
-    var currentSorters = readQuerySortState(config.query && config.query.sorts);
-
-    function rebuildColumnMap(columns) {
-      columnMap = {};
-      (columns || []).forEach(function (column) {
-        if (column && column.field) {
-          columnMap[column.field] = column;
-        }
-      });
-    }
-
-    rebuildColumnMap(config.columns);
-
     function readInitialSort(sorts) {
       return readQuerySortState(sorts)
         .map(function (sort) {
@@ -140,8 +119,8 @@ document.addEventListener('DOMContentLoaded', function () {
     function readQuerySortState(sorts) {
       return (sorts || [])
         .map(function (sort) {
-          var field = sort.field || sort.Field || '';
-          var direction = (sort.direction || sort.Direction || '').toLowerCase();
+          var field = sort && (sort.field || sort.Field || (sort.column && typeof sort.column.getField === 'function' ? sort.column.getField() : ''));
+          var direction = (sort && (sort.dir || sort.direction || sort.Direction) || '').toLowerCase();
           if (!field || !direction) {
             return null;
           }
@@ -167,68 +146,29 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function getFilterOperator(field, value) {
-      var column = columnMap[field] || {};
-      var defaultOperator = column.filterOperator || 'contains';
-      var activeOperator = column.activeFilterOperator;
-      var initialValue = column.headerFilterValue;
+    function compareCellValues(left, right) {
+      var leftValue = left && typeof left === 'object' && 'text' in left ? left.text : left;
+      var rightValue = right && typeof right === 'object' && 'text' in right ? right.text : right;
+      return String(leftValue || '').localeCompare(String(rightValue || ''), undefined, { numeric: true, sensitivity: 'base' });
+    }
 
-      if (!activeOperator) {
-        return defaultOperator;
+    function getDisplayText(value) {
+      return value && typeof value === 'object' && 'text' in value ? value.text : value;
+    }
+
+    function matchesHeaderFilter(column, rowValue, headerValue) {
+      var filterValue = String(headerValue ?? '');
+      if (filterValue.length === 0) {
+        return true;
       }
 
-      if (isBlankFilterValue(value) || String(value) !== String(initialValue || '')) {
-        return defaultOperator;
+      var candidate = String(getDisplayText(rowValue) ?? '');
+      var operator = String(column.filterOperator || 'contains').toLowerCase();
+      if (operator === 'eq') {
+        return candidate.localeCompare(filterValue, undefined, { numeric: true, sensitivity: 'base' }) === 0;
       }
 
-      return activeOperator;
-    }
-
-    function applyFilterQuery(params, filters) {
-      clearFilterQuery(params);
-      (filters || [])
-        .filter(function (filter) {
-          return !!filter && !!filter.field && !isBlankFilterValue(filter.value);
-        })
-        .forEach(function (filter, filterIndex) {
-          params.set('filter.' + filterIndex + '.field', filter.field);
-          params.set('filter.' + filterIndex + '.op', getFilterOperator(filter.field, filter.value));
-          params.set('filter.' + filterIndex + '.value', String(filter.value));
-        });
-    }
-
-    function applySortQuery(params, sorters) {
-      clearSortQuery(params);
-      (sorters || [])
-        .map(function (sorter) {
-          var field = sorter && (sorter.field || (sorter.column && typeof sorter.column.getField === 'function' ? sorter.column.getField() : ''));
-          var dir = sorter && sorter.dir;
-          return field && dir
-            ? { field: field, dir: dir }
-            : null;
-        })
-        .filter(function (sorter) {
-          return sorter !== null;
-        })
-        .forEach(function (sorter, sortIndex) {
-          params.set('sort.' + sortIndex + '.field', sorter.field);
-          params.set('sort.' + sortIndex + '.dir', sorter.dir);
-        });
-    }
-
-    function readActiveHeaderFilters(table) {
-      if (!table || typeof table.getHeaderFilters !== 'function') {
-        return [];
-      }
-
-      return table.getHeaderFilters();
-    }
-
-    function readTableState(table, sorters) {
-      return {
-        filters: readActiveHeaderFilters(table),
-        sorters: readQuerySortState(sorters || currentSorters)
-      };
+      return candidate.toLowerCase().includes(filterValue.toLowerCase());
     }
 
     function createColumns(columns) {
@@ -244,13 +184,13 @@ document.addEventListener('DOMContentLoaded', function () {
           headerFilterLiveFilter: column.headerFilterLiveFilter !== false,
           headerFilterFunc: isActionsColumn || column.headerFilter === false
             ? undefined
-            : function () {
-                return true;
+            : function (headerValue, rowValue) {
+                return matchesHeaderFilter(column, rowValue, headerValue);
               },
           sorter: isActionsColumn || column.headerSort === false
             ? undefined
-            : function () {
-                return 0;
+            : function (left, right) {
+                return compareCellValues(left, right);
               },
           cssClass: isActionsColumn ? 'efui-tabulator-actions-column' : 'efui-tabulator-data-column',
           formatter: function (cell) {
@@ -278,101 +218,6 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     }
 
-    function syncQueryState(payload) {
-      if (!table) {
-        return;
-      }
-
-      var payloadColumns = payload && payload.columns ? payload.columns : [];
-      if (typeof table.setHeaderFilterValue === 'function') {
-        payloadColumns
-          .filter(function (column) {
-            return !!column && column.field !== '__actions';
-          })
-          .forEach(function (column) {
-            table.setHeaderFilterValue(column.field, isBlankFilterValue(column.headerFilterValue) ? '' : String(column.headerFilterValue));
-          });
-      }
-
-      var sorts = readInitialSort(payload && payload.query && payload.query.sorts);
-      if (sorts.length === 0) {
-        if (typeof table.clearSort === 'function') {
-          table.clearSort();
-        } else if (typeof table.setSort === 'function') {
-          table.setSort([]);
-        }
-
-        return;
-      }
-
-      if (typeof table.setSort === 'function') {
-        table.setSort(sorts);
-      }
-    }
-
-    async function applyPayload(payload) {
-      config = payload || {};
-      listUrl = config.listUrl || listUrl;
-      dataUrl = config.dataUrl || dataUrl;
-      rebuildColumnMap(config.columns);
-      currentSorters = readQuerySortState(config.query && config.query.sorts);
-
-      applyingResponse = true;
-      try {
-        syncQueryState(config);
-        await table.replaceData(config.rows || []);
-        renderStatus(config.status);
-      } finally {
-        applyingResponse = false;
-      }
-    }
-
-    async function fetchData(params, options) {
-      var query = params.toString();
-      var requestUrl = dataUrl + (query ? '?' + query : '');
-      var requestId = ++pendingRequestId;
-
-      try {
-        var response = await fetch(requestUrl, {
-          headers: {
-            'Accept': 'application/json'
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error('Request failed');
-        }
-
-        var payload = await response.json();
-        if (requestId !== pendingRequestId) {
-          return;
-        }
-
-        await applyPayload(payload);
-        if (options && options.replaceHistory) {
-          replaceBrowserUrl(listUrl, params);
-        }
-      } catch {
-        if (requestId !== pendingRequestId) {
-          return;
-        }
-
-        await applyPayload(config);
-      }
-    }
-
-    function requestTableRefresh(mutator, options) {
-      var params = new URLSearchParams(window.location.search);
-      mutator(params);
-      if (!options || options.resetOffset !== false) {
-        params.set('offset', '0');
-      }
-
-      fetchData(params, {
-        replaceHistory: !options || options.replaceHistory !== false
-      });
-    }
-
     var table = new window.Tabulator(host, {
       data: config.rows || [],
       columns: createColumns(config.columns),
@@ -385,44 +230,7 @@ document.addEventListener('DOMContentLoaded', function () {
       dataLoaderError: '<div class="efui-tabulator-loader efui-tabulator-loader-error">Unable to load table.</div>'
     });
 
-    table.on('dataSorting', function (sorters) {
-      if (!readyForNavigation || applyingResponse) {
-        return;
-      }
-
-      var state = readTableState(table, sorters);
-      currentSorters = state.sorters;
-      requestTableRefresh(function (params) {
-        applySortQuery(params, state.sorters);
-        applyFilterQuery(params, state.filters);
-      });
-    });
-
-    table.on('dataFiltered', function () {
-      if (!readyForNavigation || applyingResponse) {
-        return;
-      }
-
-      var state = readTableState(table, currentSorters);
-      requestTableRefresh(function (params) {
-        applySortQuery(params, state.sorters);
-        applyFilterQuery(params, state.filters);
-      });
-    });
-
-    window.addEventListener('popstate', function () {
-      if (applyingResponse) {
-        return;
-      }
-
-      fetchData(new URLSearchParams(window.location.search), {
-        replaceHistory: false,
-        resetOffset: false
-      });
-    });
-
     window.setTimeout(function () {
-      readyForNavigation = true;
       renderStatus(config.status);
       container.classList.add('efui-table-enhancement-ready');
       if (fallback instanceof HTMLElement) {

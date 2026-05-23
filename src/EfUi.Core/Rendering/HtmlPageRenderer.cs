@@ -96,30 +96,19 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
 
     private static void RenderTableStatus(StringBuilder html, RenderedListView view)
     {
+        var hasWarnings = view.Warnings.Count > 0;
+        var hasErrors = view.Errors.Count > 0;
+        if (!hasWarnings && !hasErrors)
+        {
+            return;
+        }
+
         html.Append($"<section class=\"efui-table-status\" data-role=\"efui-table-status\" data-offset=\"{view.Offset}\" data-limit=\"{view.Limit}\">");
 
         RenderIssueSummary(html, view.Warnings, warning: true);
         RenderIssueSummary(html, view.Errors, warning: false);
 
-        if (view.Filters.Count == 0 && view.Sorts.Count == 0)
-        {
-            html.Append("<div class=\"efui-table-status-empty\" data-role=\"efui-table-status-empty\">No active filters or sorts</div>");
-            html.Append("</section>");
-            return;
-        }
-
-        html.Append("<div class=\"efui-table-status-items\" data-role=\"efui-table-status-items\">");
-        foreach (var filter in view.Filters)
-        {
-            html.Append($"<div class=\"efui-table-status-item\">{WebUtility.HtmlEncode(filter.Field)} {WebUtility.HtmlEncode(filter.Operator)} {WebUtility.HtmlEncode(filter.Value ?? string.Empty)}</div>");
-        }
-
-        foreach (var sort in view.Sorts)
-        {
-            html.Append($"<div class=\"efui-table-status-item\">{WebUtility.HtmlEncode(sort.Field)} {WebUtility.HtmlEncode(sort.Direction)}</div>");
-        }
-
-        html.Append("</div></section>");
+        html.Append("</section>");
     }
 
     private static void RenderIssueSummary(StringBuilder html, IReadOnlyList<string> messages, bool warning)
@@ -443,7 +432,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append("var options=Array.from(fallbackHost.querySelectorAll('input[type=checkbox]')).filter(function(input){return input instanceof HTMLInputElement;}).map(function(input){return {value:input.value,label:input.dataset.label||input.value,description:input.dataset.description||'',searchText:((input.dataset.label||input.value)+' '+(input.dataset.description||'')).toLowerCase(),selected:input.checked,disabled:input.disabled};});");
         html.Append("function syncHiddenInputs(){hiddenHost.innerHTML='';options.filter(function(option){return option.selected;}).forEach(function(option){var input=document.createElement('input');input.type='hidden';input.name=fieldName;input.value=option.value;hiddenHost.appendChild(input);});}");
         html.Append("function renderChips(){selectedHost.innerHTML='';selectedHost.className='efui-chip-list';var selected=options.filter(function(option){return option.selected;});if(selected.length===0){var empty=document.createElement('div');empty.className='efui-chip-picker-empty';empty.textContent='No items selected';selectedHost.appendChild(empty);return;}selected.forEach(function(option){var chip=document.createElement('span');chip.className='efui-chip';var label=document.createElement('span');label.textContent=option.label;chip.appendChild(label);if(!option.disabled){var remove=document.createElement('button');remove.type='button';remove.className='efui-chip-remove';remove.dataset.role='chip-remove';remove.dataset.value=option.value;remove.setAttribute('aria-label','Remove '+option.label);remove.textContent='×';chip.appendChild(remove);}selectedHost.appendChild(chip);});}");
-        html.Append("function renderResults(){resultsHost.innerHTML='';var query=searchInput.value.toLowerCase().trim();var available=options.filter(function(option){return !option.selected&&!option.disabled&&(!query||option.searchText.indexOf(query)!==-1);});if(available.length===0){var empty=document.createElement('div');empty.className='efui-chip-picker-empty';empty.textContent='No matching options';resultsHost.appendChild(empty);return;}available.forEach(function(option){var button=document.createElement('button');button.type='button';button.className='efui-chip-picker-result';button.dataset.role='chip-option';button.dataset.value=option.value;button.textContent=option.label;if(option.description){var description=document.createElement('small');description.className='efui-chip-picker-description';description.textContent=option.description;button.appendChild(document.createElement('br'));button.appendChild(description);}resultsHost.appendChild(button);});}");
+        html.Append("function renderResults(){resultsHost.innerHTML='';var query=searchInput.value.toLowerCase().trim();var available=options.filter(function(option){return !option.selected&&(!query||option.searchText.indexOf(query)!==-1);});if(available.length===0){var empty=document.createElement('div');empty.className='efui-chip-picker-empty';empty.textContent='No matching options';resultsHost.appendChild(empty);return;}available.forEach(function(option){var button=document.createElement('button');button.type='button';button.className='efui-chip-picker-result'+(option.disabled?' efui-chip-picker-result-disabled':'');button.dataset.role='chip-option';button.dataset.value=option.value;button.disabled=option.disabled;if(option.disabled){button.setAttribute('aria-disabled','true');}button.textContent=option.label;if(option.description){var description=document.createElement('small');description.className='efui-chip-picker-description';description.textContent=option.description;button.appendChild(document.createElement('br'));button.appendChild(description);}resultsHost.appendChild(button);});}");
         html.Append("function rerender(){syncHiddenInputs();renderChips();renderResults();}");
         html.Append("picker.addEventListener('click',function(event){var target=event.target;if(!(target instanceof HTMLElement)){return;}var remove=target.closest('[data-role=\"chip-remove\"]');if(remove instanceof HTMLElement){var value=remove.dataset.value||'';options.forEach(function(option){if(option.value===value&&!option.disabled){option.selected=false;}});rerender();return;}var add=target.closest('[data-role=\"chip-option\"]');if(add instanceof HTMLElement){var value=add.dataset.value||'';options.forEach(function(option){if(option.value===value&&!option.disabled){option.selected=true;}});searchInput.focus();rerender();}});");
         html.Append("searchInput.addEventListener('input',renderResults);");
