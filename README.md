@@ -88,6 +88,8 @@ The scan uses `scripts/sonar-scan.ps1` and writes local artifacts outside the re
 
 GitHub Actions still uses the repository secret `SONAR_TOKEN`.
 
+The SonarCloud organization key is the lowercase slug `jean-fischer`.
+
 ## License
 
 MIT — see `LICENSE`.
