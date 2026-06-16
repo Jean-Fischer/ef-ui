@@ -19,21 +19,38 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dotnet-version: 8.0.x
+            target-framework: net8.0
+          - dotnet-version: 9.0.x
+            target-framework: net9.0
+          - dotnet-version: 10.0.x
+            target-framework: net10.0
+
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
 
-      - name: Set up .NET 8
+      - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: ${{ matrix.dotnet-version }}
 
-      - name: Build the solution
-        run: dotnet build EfUi.sln -c Release
+      - name: Build the core test project
+        run: dotnet build tests/EfUi.Core.Tests/EfUi.Core.Tests.csproj -c Release -f ${{ matrix.target-framework }}
+
+      - name: Build the ASP.NET Core test project
+        run: dotnet build tests/EfUi.AspNetCore.Tests/EfUi.AspNetCore.Tests.csproj -c Release -f ${{ matrix.target-framework }}
 
       - name: Install Playwright browsers
         shell: pwsh
-        run: ./tests/EfUi.AspNetCore.Tests/bin/Release/net8.0/playwright.ps1 install chromium
+        run: ./tests/EfUi.AspNetCore.Tests/bin/Release/${{ matrix.target-framework }}/playwright.ps1 install chromium
 
-      - name: Run tests
-        run: dotnet test EfUi.sln -c Release --no-build
+      - name: Run the core tests
+        run: dotnet test tests/EfUi.Core.Tests/EfUi.Core.Tests.csproj -c Release -f ${{ matrix.target-framework }} --no-build
+
+      - name: Run the ASP.NET Core tests
+        run: dotnet test tests/EfUi.AspNetCore.Tests/EfUi.AspNetCore.Tests.csproj -c Release -f ${{ matrix.target-framework }} --no-build

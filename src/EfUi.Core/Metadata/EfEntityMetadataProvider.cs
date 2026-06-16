@@ -352,9 +352,8 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
 
     private static string GetRouteName(IEntityType entityType)
     {
-        return (entityType.FindAnnotation("Relational:TableName")?.Value as string
-                ?? entityType.ClrType.Name)
-            .ToLowerInvariant();
+        var tableName = entityType.GetTableName();
+        return (tableName ?? entityType.ClrType.Name).ToLowerInvariant();
     }
 
     private static bool IsEditableOnCreate(IProperty property)
