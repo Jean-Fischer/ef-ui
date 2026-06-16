@@ -74,13 +74,15 @@ mise run test-browser
 
 ## SonarCloud scan
 
-Set `SONAR_TOKEN` in your shell, then run:
+Set `EF_UI_SONAR_TOKEN` in your shell, then run:
 
 ```bash
 mise run sonar
 ```
 
 The scan uses `scripts/sonar-scan.ps1` and writes local artifacts outside the repository.
+
+GitHub Actions still uses the repository secret `SONAR_TOKEN`.
 
 ## License
 

@@ -35,5 +35,5 @@ run_windows = "dotnet test tests\\EfUi.AspNetCore.Tests\\EfUi.AspNetCore.Tests.c
 
 [tasks.sonar]
 description = "Run the SonarCloud scan locally"
-run = "pwsh -File scripts/sonar-scan.ps1 -TokenEnvVar SONAR_TOKEN"
-run_windows = "pwsh -File scripts/sonar-scan.ps1 -TokenEnvVar SONAR_TOKEN"
+run = "pwsh -File scripts/sonar-scan.ps1"
+run_windows = "pwsh -File scripts/sonar-scan.ps1"
