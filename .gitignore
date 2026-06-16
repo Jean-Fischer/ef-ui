@@ -22,6 +22,9 @@ manual_verify_start.ps1
 src/EfUi.SampleHost/sample.db
 src/EfUi.SampleHost/sample.db-shm
 src/EfUi.SampleHost/sample.db-wal
+src/EfUi.SampleHost/edge-cases.db
+src/EfUi.SampleHost/edge-cases.db-shm
+src/EfUi.SampleHost/edge-cases.db-wal
 
 # Local git worktrees
 .worktrees/
