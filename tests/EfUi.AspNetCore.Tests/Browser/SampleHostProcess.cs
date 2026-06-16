@@ -132,10 +132,11 @@ internal sealed class SampleHostProcess : IAsyncDisposable
 
     private static string GetBuiltSampleHostPath(string repoRoot)
     {
+        var targetFramework = GetCurrentTargetFrameworkFolder();
         var candidates = new[]
         {
-            Path.Combine(repoRoot, "src", "EfUi.SampleHost", "bin", "Debug", "net8.0", "EfUi.SampleHost.dll"),
-            Path.Combine(repoRoot, "src", "EfUi.SampleHost", "bin", "Release", "net8.0", "EfUi.SampleHost.dll")
+            Path.Combine(repoRoot, "src", "EfUi.SampleHost", "bin", "Debug", targetFramework, "EfUi.SampleHost.dll"),
+            Path.Combine(repoRoot, "src", "EfUi.SampleHost", "bin", "Release", targetFramework, "EfUi.SampleHost.dll")
         };
 
         foreach (var candidate in candidates)
@@ -146,7 +147,24 @@ internal sealed class SampleHostProcess : IAsyncDisposable
             }
         }
 
-        throw new FileNotFoundException($"Expected built sample host in one of the following locations: {string.Join(", ", candidates)}", candidates[0]);
+        throw new FileNotFoundException($"Expected built sample host for {targetFramework} in one of the following locations: {string.Join(", ", candidates)}", candidates[0]);
+    }
+
+    private static string GetCurrentTargetFrameworkFolder()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (directory is not null)
+        {
+            if (directory.Name.StartsWith("net", StringComparison.OrdinalIgnoreCase))
+            {
+                return directory.Name;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new InvalidOperationException($"Could not determine the target framework folder from {AppContext.BaseDirectory}.");
     }
 
     private static int GetFreeTcpPort()

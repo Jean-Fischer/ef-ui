@@ -2,7 +2,7 @@
 
 > Add a built-in CRUD UI to your existing EF Core app.
 
-`EfUi.AspNetCore` adds EF UI to an ASP.NET Core app that already has a `DbContext` registered in dependency injection. It works with .NET 8+, EF Core 8+, and is designed to be provider-agnostic. The sample host in this repository uses SQLite.
+`EfUi.AspNetCore` adds EF UI to an ASP.NET Core app that already has a `DbContext` registered in dependency injection. It works with .NET 8, .NET 9, and .NET 10, with matching EF Core 8, 9, and 10 support checks, and is built on EF Core relational APIs. The sample host in this repository uses SQLite.
 
 ## Install
 
@@ -42,7 +42,7 @@ app.Run();
 - CRUD pages over your EF Core entities
 - relationship-aware forms and list pages
 - server-rendered fallback with enhanced table browsing
-- provider-agnostic behavior across EF Core database providers
+- relational EF Core behavior across supported database providers
 
 ## Model annotations
 
