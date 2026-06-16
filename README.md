@@ -72,6 +72,16 @@ mise run playwright-install
 mise run test-browser
 ```
 
+## SonarCloud scan
+
+Set `SONAR_TOKEN` in your shell, then run:
+
+```bash
+mise run sonar
+```
+
+The scan uses `scripts/sonar-scan.ps1` and writes local artifacts outside the repository.
+
 ## License
 
 MIT — see `LICENSE`.
