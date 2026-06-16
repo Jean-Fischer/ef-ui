@@ -28,7 +28,6 @@ internal sealed class SampleHostProcess : IAsyncDisposable
         var tempDirectory = Path.Combine(Path.GetTempPath(), "ef-ui-playwright", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDirectory);
 
-        CopyFile(Path.Combine(repoRoot, "src", "EfUi.SampleHost", "sample.db"), Path.Combine(tempDirectory, "sample.db"));
         var chinookDbPath = Path.Combine(tempDirectory, "chinook.db");
         CopyFile(Path.Combine(repoRoot, "db", "chinook.db"), chinookDbPath);
 
@@ -120,9 +119,7 @@ internal sealed class SampleHostProcess : IAsyncDisposable
         while (directory is not null)
         {
             var chinookDb = Path.Combine(directory.FullName, "db", "chinook.db");
-            var sampleDb = Path.Combine(directory.FullName, "src", "EfUi.SampleHost", "sample.db");
-
-            if (File.Exists(chinookDb) && File.Exists(sampleDb))
+            if (File.Exists(chinookDb))
             {
                 return directory.FullName;
             }
@@ -130,7 +127,7 @@ internal sealed class SampleHostProcess : IAsyncDisposable
             directory = directory.Parent;
         }
 
-        throw new InvalidOperationException("Could not locate the repository root containing db/chinook.db and src/EfUi.SampleHost/sample.db.");
+        throw new InvalidOperationException("Could not locate the repository root containing db/chinook.db.");
     }
 
     private static string GetBuiltSampleHostPath(string repoRoot)
