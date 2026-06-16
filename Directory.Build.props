@@ -4,12 +4,5 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-
-    <EfCore8Version>8.0.28</EfCore8Version>
-    <EfCore9Version>9.0.17</EfCore9Version>
-    <EfCore10Version>10.0.9</EfCore10Version>
-    <AspNetCore8Version>8.0.28</AspNetCore8Version>
-    <AspNetCore9Version>9.0.17</AspNetCore9Version>
-    <AspNetCore10Version>10.0.9</AspNetCore10Version>
   </PropertyGroup>
 </Project>

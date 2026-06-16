@@ -42,7 +42,7 @@ app.Run();
 - CRUD pages over your EF Core entities
 - relationship-aware forms and list pages
 - server-rendered fallback with enhanced table browsing
-- relational EF Core behavior across supported database providers
+- relational EF Core behavior for supported database providers
 
 ## Try it locally
 
