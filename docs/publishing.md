@@ -35,9 +35,9 @@ For prereleases, keep the same rule:
 - None
 
 ## Notes
-- Targets .NET 8+
-- Validated against EF Core 8.x
-- Works with any EF Core provider
+- Targets .NET 8, .NET 9, and .NET 10
+- Validated against EF Core 8.x, 9.x, and 10.x
+- Built on EF Core relational APIs and validated with SQLite
 ```
 
 ## Required GitHub secret

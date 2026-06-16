@@ -28,7 +28,6 @@ internal sealed class SampleHostProcess : IAsyncDisposable
         var tempDirectory = Path.Combine(Path.GetTempPath(), "ef-ui-playwright", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDirectory);
 
-        CopyFile(Path.Combine(repoRoot, "src", "EfUi.SampleHost", "sample.db"), Path.Combine(tempDirectory, "sample.db"));
         var chinookDbPath = Path.Combine(tempDirectory, "chinook.db");
         CopyFile(Path.Combine(repoRoot, "db", "chinook.db"), chinookDbPath);
 
@@ -120,9 +119,7 @@ internal sealed class SampleHostProcess : IAsyncDisposable
         while (directory is not null)
         {
             var chinookDb = Path.Combine(directory.FullName, "db", "chinook.db");
-            var sampleDb = Path.Combine(directory.FullName, "src", "EfUi.SampleHost", "sample.db");
-
-            if (File.Exists(chinookDb) && File.Exists(sampleDb))
+            if (File.Exists(chinookDb))
             {
                 return directory.FullName;
             }
@@ -130,15 +127,16 @@ internal sealed class SampleHostProcess : IAsyncDisposable
             directory = directory.Parent;
         }
 
-        throw new InvalidOperationException("Could not locate the repository root containing db/chinook.db and src/EfUi.SampleHost/sample.db.");
+        throw new InvalidOperationException("Could not locate the repository root containing db/chinook.db.");
     }
 
     private static string GetBuiltSampleHostPath(string repoRoot)
     {
+        var targetFramework = GetCurrentTargetFrameworkFolder();
         var candidates = new[]
         {
-            Path.Combine(repoRoot, "src", "EfUi.SampleHost", "bin", "Debug", "net8.0", "EfUi.SampleHost.dll"),
-            Path.Combine(repoRoot, "src", "EfUi.SampleHost", "bin", "Release", "net8.0", "EfUi.SampleHost.dll")
+            Path.Combine(repoRoot, "src", "EfUi.SampleHost", "bin", "Debug", targetFramework, "EfUi.SampleHost.dll"),
+            Path.Combine(repoRoot, "src", "EfUi.SampleHost", "bin", "Release", targetFramework, "EfUi.SampleHost.dll")
         };
 
         foreach (var candidate in candidates)
@@ -149,7 +147,24 @@ internal sealed class SampleHostProcess : IAsyncDisposable
             }
         }
 
-        throw new FileNotFoundException($"Expected built sample host in one of the following locations: {string.Join(", ", candidates)}", candidates[0]);
+        throw new FileNotFoundException($"Expected built sample host for {targetFramework} in one of the following locations: {string.Join(", ", candidates)}", candidates[0]);
+    }
+
+    private static string GetCurrentTargetFrameworkFolder()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (directory is not null)
+        {
+            if (directory.Name.StartsWith("net", StringComparison.OrdinalIgnoreCase))
+            {
+                return directory.Name;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new InvalidOperationException($"Could not determine the target framework folder from {AppContext.BaseDirectory}.");
     }
 
     private static int GetFreeTcpPort()

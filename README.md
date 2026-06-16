@@ -2,7 +2,7 @@
 
 > Give your existing EF Core app a built-in CRUD UI.
 
-EF UI adds a server-rendered admin experience to an existing ASP.NET Core app with a `DbContext` already registered in dependency injection. It works with any EF Core provider and is packaged as `EfUi.AspNetCore`.
+EF UI adds a server-rendered admin experience to an existing ASP.NET Core app with a `DbContext` already registered in dependency injection. It is built on EF Core relational APIs and is packaged as `EfUi.AspNetCore`.
 
 ## Install
 
@@ -42,12 +42,12 @@ app.Run();
 - CRUD pages over your EF Core entities
 - relationship-aware forms and list pages
 - server-rendered fallback with enhanced table browsing
-- provider-agnostic behavior across EF Core database providers
+- relational EF Core behavior for supported database providers
 
 ## Try it locally
 
 ```bash
-dotnet run --project src/EfUi.SampleHost
+dotnet run --project src/EfUi.SampleHost --framework net8.0
 ```
 
 Open `http://localhost:5000/` or the URL shown by ASP.NET Core.
@@ -56,6 +56,10 @@ Open `http://localhost:5000/` or the URL shown by ASP.NET Core.
 
 - Package details: [src/EfUi.AspNetCore/README.md](src/EfUi.AspNetCore/README.md)
 - Release and publishing: `docs/publishing.md`
+
+## Supported versions
+
+EF UI ships multi-targeted builds for .NET 8, .NET 9, and .NET 10, with matching EF Core 8, 9, and 10 compatibility checks.
 
 ## Browser tests
 
