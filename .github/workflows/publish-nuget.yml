@@ -35,10 +35,11 @@ jobs:
 
       - name: Validate version input
         shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          version='${{ inputs.version }}'
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid version: $version"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: $VERSION"
             exit 1
           fi
 
