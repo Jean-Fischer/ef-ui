@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-sonar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install SonarScanner for .NET
+        run: dotnet tool install dotnet-sonarscanner --tool-path ./.sonar/scanner
+
+      - name: Begin SonarCloud analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          project_key="jean-fischer_ef-ui"
+          organization_key="Jean-Fischer"
+          quality_gate_wait="false"
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            quality_gate_wait="true"
+          fi
+
+          ./.sonar/scanner/dotnet-sonarscanner begin \
+            /k:"$project_key" \
+            /o:"$organization_key" \
+            /d:sonar.host.url="https://sonarcloud.io" \
+            /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.qualitygate.wait="$quality_gate_wait"
+
+      - name: Build the solution
+        run: dotnet build EfUi.sln -c Release
+
+      - name: Install Playwright browsers
+        shell: pwsh
+        run: ./tests/EfUi.AspNetCore.Tests/bin/Release/net8.0/playwright.ps1 install chromium
+
+      - name: Run tests
+        run: dotnet test EfUi.sln -c Release --no-build
+
+      - name: End SonarCloud analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          ./.sonar/scanner/dotnet-sonarscanner end /d:sonar.token="$SONAR_TOKEN"
