@@ -21,6 +21,8 @@ namespace EfUi.AspNetCore.Tests;
 
 public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
 {
+    private const string DateTimeIsoPattern = @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,7})?)?(Z|[+-]\d{2}:\d{2})?$";
+
     private readonly EfUiApplicationFactory _factory;
     private readonly HttpClient _client;
 
@@ -560,6 +562,11 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/simple/users\">User</a>");
         html.Should().Contain("<span class=\"efui-breadcrumb-current\">New</span>");
         html.Should().Contain("name=\"Name\"");
+        html.Should().Contain("type=\"checkbox\" name=\"IsActive\" value=\"true\"");
+        html.Should().Contain("type=\"hidden\" name=\"IsActive\" value=\"false\"");
+        html.Should().Contain("name=\"CreatedAt\" value=\"\"");
+        html.Should().Contain($"pattern=\"{DateTimeIsoPattern}\"");
+        html.Should().Contain("placeholder=\"2026-05-17T10:30:00Z\"");
         html.Should().Contain("name=\"__RequestVerificationToken\"");
         html.Should().NotContain("name=\"Id\"");
     }
@@ -588,7 +595,10 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain($"action=\"/simple/users/{id}\"");
         html.Should().Contain("name=\"Name\" value=\"Edit Me\"");
         html.Should().Contain($"name=\"Email\" value=\"{email}\"");
-        html.Should().Contain("name=\"IsActive\" value=\"True\"");
+        html.Should().Contain("type=\"checkbox\" name=\"IsActive\" value=\"true\" checked");
+        html.Should().Contain("type=\"hidden\" name=\"IsActive\" value=\"false\"");
+        html.Should().Contain("name=\"CreatedAt\" value=\"2026-05-17T10:00:00.0000000\"");
+        html.Should().Contain($"pattern=\"{DateTimeIsoPattern}\"");
         html.Should().NotContain("name=\"Id\"");
     }
 
@@ -676,8 +686,11 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var html = await _client.GetStringAsync($"/simple/users/{id}/edit");
         html.Should().Contain("name=\"Name\" value=\"After Update\"");
         html.Should().Contain($"name=\"Email\" value=\"{updatedEmail}\"");
-        html.Should().Contain("name=\"IsActive\" value=\"False\"");
+        html.Should().Contain("type=\"checkbox\" name=\"IsActive\" value=\"true\"");
+        html.Should().NotContain("type=\"checkbox\" name=\"IsActive\" value=\"true\" checked");
+        html.Should().Contain("type=\"hidden\" name=\"IsActive\" value=\"false\"");
         html.Should().Contain("name=\"CreatedAt\" value=\"2026-05-18T12:30:00.0000000\"");
+        html.Should().Contain($"pattern=\"{DateTimeIsoPattern}\"");
         html.Should().Contain("<option value=\"2\" selected>Guests</option>");
     }
 
@@ -720,8 +733,11 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var html = await response.Content.ReadAsStringAsync();
         html.Should().Contain("name=\"Name\" value=\"Edited Name\"");
         html.Should().Contain($"name=\"Email\" value=\"{submittedEmail}\"");
-        html.Should().Contain("name=\"IsActive\" value=\"false\"");
+        html.Should().Contain("type=\"checkbox\" name=\"IsActive\" value=\"true\"");
+        html.Should().NotContain("type=\"checkbox\" name=\"IsActive\" value=\"true\" checked");
+        html.Should().Contain("type=\"hidden\" name=\"IsActive\" value=\"false\"");
         html.Should().Contain("name=\"CreatedAt\" value=\"bad-date\"");
+        html.Should().Contain($"pattern=\"{DateTimeIsoPattern}\"");
         html.Should().NotContain(originalEmail);
         html.Should().NotContain("2026-05-17T10:00:00.0000000");
     }
