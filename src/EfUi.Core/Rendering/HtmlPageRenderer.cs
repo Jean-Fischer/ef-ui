@@ -31,7 +31,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         return html.ToString();
     }
 
-    public string RenderList(string routePrefix, EntityMetadata entity, RenderedListView view, bool showActions = true)
+    public string RenderList(string routePrefix, EntityMetadata entity, RenderedListView view, bool showActions = true, string? antiForgeryToken = null)
     {
         var html = new StringBuilder();
         AppendDocumentStart(html, routePrefix, "efui-page", BuildTableEnhancementHead(routePrefix));
@@ -49,7 +49,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             AppendClosingDivTag(html);
         }
         RenderTableStatus(html, view);
-        RenderTableEnhancementShell(html, routePrefix, entity, view, showActions);
+        RenderTableEnhancementShell(html, routePrefix, entity, view, showActions, antiForgeryToken);
         html.Append("<div class=\"efui-table-wrapper\" data-role=\"efui-table-fallback\">");
         html.Append("<table class=\"efui-table\"><thead><tr>");
 
@@ -80,7 +80,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             if (showActions)
             {
                 html.Append("<td class=\"efui-row-actions\">");
-                html.Append(BuildRowActionsMarkup(routePrefix, entity, row.Key));
+                html.Append(BuildRowActionsMarkup(routePrefix, entity, row.Key, antiForgeryToken));
                 html.Append("</td>");
             }
 
@@ -91,8 +91,8 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         return html.ToString();
     }
 
-    public string RenderForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
-        => RenderEditForm(routePrefix, entity, model, isCreate, errors, null, submittedValues, fieldOptions);
+    public string RenderForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null, string? antiForgeryToken = null)
+        => RenderEditForm(routePrefix, entity, model, isCreate, errors, null, submittedValues, fieldOptions, antiForgeryToken);
 
     private static void RenderTableStatus(StringBuilder html, RenderedListView view)
     {
@@ -190,12 +190,12 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     private static string BuildTableEnhancementHead(string routePrefix)
         => $"<link rel=\"stylesheet\" href=\"{routePrefix}/assets/tabulator.min.css\" /><link rel=\"stylesheet\" href=\"{routePrefix}/assets/efui-table.css\" /><script src=\"{routePrefix}/assets/tabulator.min.js\"></script><script defer src=\"{routePrefix}/assets/efui-table.js\"></script>";
 
-    private static void RenderTableEnhancementShell(StringBuilder html, string routePrefix, EntityMetadata entity, RenderedListView view, bool showActions)
+    private static void RenderTableEnhancementShell(StringBuilder html, string routePrefix, EntityMetadata entity, RenderedListView view, bool showActions, string? antiForgeryToken)
     {
         html.Append("<section class=\"efui-table-enhancement\" data-role=\"efui-table-enhancement\">");
         html.Append("<div class=\"efui-table-host\" data-role=\"efui-table-host\"></div>");
         html.Append("<script type=\"application/json\" data-role=\"efui-table-config\">");
-        html.Append(RenderedListPayloadFactory.Serialize(routePrefix, entity, view, showActions));
+        html.Append(RenderedListPayloadFactory.Serialize(routePrefix, entity, view, showActions, antiForgeryToken));
         html.Append("</script></section>");
     }
 
@@ -216,13 +216,14 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         return html.ToString();
     }
 
-    private static string BuildRowActionsMarkup(string routePrefix, EntityMetadata entity, string rowKey)
+    private static string BuildRowActionsMarkup(string routePrefix, EntityMetadata entity, string rowKey, string? antiForgeryToken)
     {
         var escapedKey = EscapeRouteSegment(rowKey);
-        return $"<a class=\"efui-row-action-link\" href=\"{routePrefix}/{entity.RouteName}/{escapedKey}/edit\">Edit</a><form class=\"efui-row-action-form\" method=\"post\" action=\"{routePrefix}/{entity.RouteName}/{escapedKey}/delete\"><button class=\"efui-row-action-button\" type=\"submit\">Delete</button></form>";
+        var antiforgeryField = AntiforgeryMarkup.BuildHiddenInput(antiForgeryToken);
+        return $"<a class=\"efui-row-action-link\" href=\"{routePrefix}/{entity.RouteName}/{escapedKey}/edit\">Edit</a><form class=\"efui-row-action-form\" method=\"post\" action=\"{routePrefix}/{entity.RouteName}/{escapedKey}/delete\">{antiforgeryField}<button class=\"efui-row-action-button\" type=\"submit\">Delete</button></form>";
     }
 
-    public string RenderEditForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, object? key, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null)
+    public string RenderEditForm(string routePrefix, EntityMetadata entity, object? model, bool isCreate, IReadOnlyDictionary<string, string[]> errors, object? key, IReadOnlyDictionary<string, string[]>? submittedValues = null, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions = null, string? antiForgeryToken = null)
     {
         var html = new StringBuilder();
         AppendDocumentStart(html, routePrefix, "efui-form-page");
@@ -232,7 +233,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
             new BreadcrumbItem(entity.DisplayName, $"{routePrefix}/{entity.RouteName}"),
             new BreadcrumbItem(isCreate ? "New" : "Edit")
         ]);
-        html.Append($"<form class=\"efui-form\" method=\"post\" action=\"{GetEditFormAction(routePrefix, entity, isCreate, key)}\">");
+        html.Append($"<form class=\"efui-form\" method=\"post\" action=\"{GetEditFormAction(routePrefix, entity, isCreate, key)}\">{AntiforgeryMarkup.BuildHiddenInput(antiForgeryToken)}");
         html.Append($"<h1 class=\"efui-form-title\">{WebUtility.HtmlEncode(entity.DisplayName)}</h1>");
 
         RenderFormErrors(html, errors);

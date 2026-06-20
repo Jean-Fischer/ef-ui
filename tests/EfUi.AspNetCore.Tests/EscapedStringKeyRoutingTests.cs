@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using EfUi.AspNetCore;
 using FluentAssertions;
 using Microsoft.AspNetCore.Builder;
@@ -20,12 +21,13 @@ public sealed class EscapedStringKeyRoutingTests
         var createHtml = await host.Client.GetStringAsync("/efui/tenants/new");
         createHtml.Should().Contain("name=\"TenantKey\"");
         createHtml.Should().Contain("name=\"Name\"");
+        createHtml.Should().Contain("name=\"__RequestVerificationToken\"");
 
-        var response = await host.Client.PostAsync("/efui/tenants", new FormUrlEncodedContent(new Dictionary<string, string>
+        var response = await PostWithAntiforgeryAsync(host.Client, "/efui/tenants/new", "/efui/tenants", new Dictionary<string, string>
         {
             ["TenantKey"] = "tenant south?2",
             ["Name"] = "South"
-        }));
+        });
 
         response.StatusCode.Should().BeOneOf(System.Net.HttpStatusCode.Redirect, System.Net.HttpStatusCode.SeeOther);
         response.Headers.Location.Should().NotBeNull();
@@ -41,11 +43,11 @@ public sealed class EscapedStringKeyRoutingTests
     {
         await using var host = await StringKeyEfUiTestHost.CreateAsync();
 
-        var response = await host.Client.PostAsync("/efui/tenants", new FormUrlEncodedContent(new Dictionary<string, string>
+        var response = await PostWithAntiforgeryAsync(host.Client, "/efui/tenants/new", "/efui/tenants", new Dictionary<string, string>
         {
             ["TenantKey"] = "tenant north?1",
             ["Name"] = "Duplicate North"
-        }));
+        });
 
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
         var html = await response.Content.ReadAsStringAsync();
@@ -64,11 +66,11 @@ public sealed class EscapedStringKeyRoutingTests
         getHtml.Should().Contain("name=\"Name\" value=\"North\"");
         getHtml.Should().NotContain("name=\"TenantKey\"");
 
-        var response = await host.Client.PostAsync("/efui/tenants/tenant%20north%3F1", new FormUrlEncodedContent(new Dictionary<string, string>
+        var response = await PostWithAntiforgeryAsync(host.Client, "/efui/tenants/tenant%20north%3F1/edit", "/efui/tenants/tenant%20north%3F1", new Dictionary<string, string>
         {
             ["TenantKey"] = "tenant south?2",
             ["Name"] = "North Updated"
-        }));
+        });
 
         response.StatusCode.Should().BeOneOf(System.Net.HttpStatusCode.Redirect, System.Net.HttpStatusCode.SeeOther);
         response.Headers.Location.Should().NotBeNull();
@@ -78,6 +80,35 @@ public sealed class EscapedStringKeyRoutingTests
         listHtml.Should().Contain("North Updated");
         listHtml.Should().Contain("/efui/tenants/tenant%20north%3F1/edit");
         listHtml.Should().NotContain("/efui/tenants/tenant%20south%3F2/edit\">North Updated");
+    }
+
+    private static async Task<HttpResponseMessage> PostWithAntiforgeryAsync(HttpClient client, string formPath, string postPath, IEnumerable<KeyValuePair<string, string>> fields)
+    {
+        using var getResponse = await client.GetAsync(formPath);
+        var html = await getResponse.Content.ReadAsStringAsync();
+        var token = GetAntiforgeryToken(html);
+        var formValues = fields.ToList();
+        formValues.Add(new KeyValuePair<string, string>("__RequestVerificationToken", token));
+
+        using var postRequest = new HttpRequestMessage(HttpMethod.Post, postPath)
+        {
+            Content = new FormUrlEncodedContent(formValues)
+        };
+
+        if (getResponse.Headers.TryGetValues("Set-Cookie", out var setCookies))
+        {
+            var cookieHeader = string.Join("; ", setCookies.Select(value => value.Split(';', 2)[0]));
+            postRequest.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
+        }
+
+        return await client.SendAsync(postRequest);
+    }
+
+    private static string GetAntiforgeryToken(string html)
+    {
+        var match = Regex.Match(html, @"name=""__RequestVerificationToken"" value=""(?<token>[^""]+)""", RegexOptions.Singleline);
+        match.Success.Should().BeTrue();
+        return match.Groups["token"].Value;
     }
 
     private sealed class StringKeyEfUiTestHost : IAsyncDisposable

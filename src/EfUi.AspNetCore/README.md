@@ -36,6 +36,7 @@ app.Run();
 - `RequireAuthorization = true` to protect the UI with ASP.NET Core auth
 - `EnableInProduction = true` to allow the UI outside Development
 - `ReadOnlyRoleName` / `EditRoleName` if your app uses different role names
+- `AntiforgeryKeyDirectory` to override where EF UI stores its Data Protection key ring for write-form tokens
 
 ## What you get
 
@@ -71,6 +72,7 @@ If no attribute is present, EF UI falls back to `Name`, `Title`, `Email`, then t
 - The package exposes the `UseEfUi` ASP.NET Core extension method.
 - The UI is designed for existing ASP.NET Core apps with a registered EF Core `DbContext`.
 - The enhanced list shell self-hosts its Tabulator assets instead of fetching them from a CDN.
+- Write forms and delete actions include hidden antiforgery tokens by default.
 - When authorization is enabled, browsing routes accept `ReadOnly` or `Edit`, while create, update, and delete routes require `Edit`.
 
 ## Current limitations

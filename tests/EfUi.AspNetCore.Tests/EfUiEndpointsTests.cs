@@ -560,6 +560,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         html.Should().Contain("<a class=\"efui-breadcrumb-link\" href=\"/simple/users\">User</a>");
         html.Should().Contain("<span class=\"efui-breadcrumb-current\">New</span>");
         html.Should().Contain("name=\"Name\"");
+        html.Should().Contain("name=\"__RequestVerificationToken\"");
         html.Should().NotContain("name=\"Id\"");
     }
 
@@ -623,18 +624,33 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     [Fact]
     public async Task Post_create_user_redirects_back_to_entity_page()
     {
-        var response = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(new Dictionary<string, string>
+        var response = await PostWithAntiforgeryAsync("/simple/users/new", "/simple/users", new Dictionary<string, string>
         {
             ["Name"] = "Grace",
             ["Email"] = $"grace-{Guid.NewGuid():N}@example.com",
             ["IsActive"] = "true",
             ["CreatedAt"] = "2026-05-17T10:00:00",
             ["Group"] = "1"
-        }));
+        });
 
         response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
         response.Headers.Location.Should().NotBeNull();
         response.Headers.Location!.ToString().Should().Be("/simple/users");
+    }
+
+    [Fact]
+    public async Task Post_create_user_without_antiforgery_token_is_rejected()
+    {
+        var response = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Name"] = "Missing Token",
+            ["Email"] = $"missing-{Guid.NewGuid():N}@example.com",
+            ["IsActive"] = "true",
+            ["CreatedAt"] = "2026-05-17T10:00:00",
+            ["Group"] = "1"
+        }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
@@ -644,14 +660,14 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var updatedEmail = $"after-{Guid.NewGuid():N}@example.com";
         var id = await CreateUserAndGetIdAsync("Before Update", originalEmail);
 
-        var response = await _client.PostAsync($"/simple/users/{id}", new FormUrlEncodedContent(new Dictionary<string, string>
+        var response = await PostWithAntiforgeryAsync($"/simple/users/{id}/edit", $"/simple/users/{id}", new Dictionary<string, string>
         {
             ["Name"] = "After Update",
             ["Email"] = updatedEmail,
             ["IsActive"] = "false",
             ["CreatedAt"] = "2026-05-18T12:30:00",
             ["Group"] = "2"
-        }));
+        });
 
         response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
         response.Headers.Location.Should().NotBeNull();
@@ -669,14 +685,14 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     public async Task Post_create_failure_preserves_submitted_values()
     {
         var email = $"invalid-{Guid.NewGuid():N}@example.com";
-        var response = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(new Dictionary<string, string>
+        var response = await PostWithAntiforgeryAsync("/simple/users/new", "/simple/users", new Dictionary<string, string>
         {
             ["Name"] = "Keep Me",
             ["Email"] = email,
             ["IsActive"] = "true",
             ["CreatedAt"] = "not-a-date",
             ["Group"] = "1"
-        }));
+        });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var html = await response.Content.ReadAsStringAsync();
@@ -692,13 +708,13 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var submittedEmail = $"submitted-{Guid.NewGuid():N}@example.com";
         var id = await CreateUserAndGetIdAsync("Original Name", originalEmail);
 
-        var response = await _client.PostAsync($"/simple/users/{id}", new FormUrlEncodedContent(new Dictionary<string, string>
+        var response = await PostWithAntiforgeryAsync($"/simple/users/{id}/edit", $"/simple/users/{id}", new Dictionary<string, string>
         {
             ["Name"] = "Edited Name",
             ["Email"] = submittedEmail,
             ["IsActive"] = "false",
             ["CreatedAt"] = "bad-date"
-        }));
+        });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var html = await response.Content.ReadAsStringAsync();
@@ -716,12 +732,13 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var email = $"clear-group-{Guid.NewGuid():N}@example.com";
         var id = await CreateUserAndGetIdAsync("Clear Group User", email);
 
-        var response = await _client.PostAsync(
+        var response = await PostWithAntiforgeryAsync(
+            "/simple/groups/1/edit",
             "/simple/groups/1",
-            new FormUrlEncodedContent(new[]
+            new[]
             {
                 new KeyValuePair<string, string>("Name", "Admins")
-            }));
+            });
 
         response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
 
@@ -735,7 +752,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var email = $"delete-{Guid.NewGuid():N}@example.com";
         var id = await CreateUserAndGetIdAsync("Delete Me", email);
 
-        var response = await _client.PostAsync($"/simple/users/{id}/delete", new FormUrlEncodedContent(new Dictionary<string, string>()));
+        var response = await PostWithAntiforgeryAsync("/simple/users", $"/simple/users/{id}/delete", Array.Empty<KeyValuePair<string, string>>());
 
         response.IsSuccessStatusCode.Should().BeTrue();
         var updatedHtml = await response.Content.ReadAsStringAsync();
@@ -745,7 +762,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     [Fact]
     public async Task Post_delete_missing_row_returns_not_found()
     {
-        var response = await _client.PostAsync("/simple/users/999999/delete", new FormUrlEncodedContent(new Dictionary<string, string>()));
+        var response = await PostWithAntiforgeryAsync("/simple/users", "/simple/users/999999/delete", Array.Empty<KeyValuePair<string, string>>());
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -822,7 +839,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
             values["Group"] = group;
         }
 
-        var createResponse = await _client.PostAsync("/simple/users", new FormUrlEncodedContent(values));
+        var createResponse = await PostWithAntiforgeryAsync("/simple/users/new", "/simple/users", values);
 
         createResponse.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
 
@@ -873,6 +890,22 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var match = Regex.Match(html, $@"<tr>(?:(?!</tr>).)*{Regex.Escape(value)}(?:(?!</tr>).)*</tr>", RegexOptions.Singleline);
         match.Success.Should().BeTrue();
         return match.Value;
+    }
+
+    private async Task<HttpResponseMessage> PostWithAntiforgeryAsync(string formPath, string postPath, IEnumerable<KeyValuePair<string, string>> fields)
+    {
+        var html = await _client.GetStringAsync(formPath);
+        var token = GetAntiforgeryToken(html);
+        var formValues = fields.ToList();
+        formValues.Add(new KeyValuePair<string, string>("__RequestVerificationToken", token));
+        return await _client.PostAsync(postPath, new FormUrlEncodedContent(formValues));
+    }
+
+    private static string GetAntiforgeryToken(string html)
+    {
+        var match = Regex.Match(html, @"name=""__RequestVerificationToken"" value=""(?<token>[^""]+)""", RegexOptions.Singleline);
+        match.Success.Should().BeTrue();
+        return match.Groups["token"].Value;
     }
 
     private static int CountTableBodyRows(string html)

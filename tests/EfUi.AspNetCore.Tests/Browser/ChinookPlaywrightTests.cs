@@ -108,8 +108,20 @@ public sealed class ChinookPlaywrightTests : IAsyncLifetime
 
         var deleteUrl = await updatedRow.Locator("form.efui-row-action-form").GetAttributeAsync("action");
         deleteUrl.Should().NotBeNullOrWhiteSpace();
+        var deleteToken = await updatedRow.Locator("input[name='__RequestVerificationToken']").GetAttributeAsync("value");
+        deleteToken.Should().NotBeNullOrWhiteSpace();
 
-        var deleteSucceeded = await page.EvaluateAsync<bool>($"async () => {{ const response = await fetch('{deleteUrl}', {{ method: 'POST' }}); return response.ok; }}");
+        var deleteSucceeded = await page.EvaluateAsync<bool>(
+            @"async ({ url, token }) => {
+                const body = new URLSearchParams({ __RequestVerificationToken: token }).toString();
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body
+                });
+                return response.ok;
+            }",
+            new { url = deleteUrl, token = deleteToken });
         deleteSucceeded.Should().BeTrue();
 
         var listResponse = await page.GotoAsync("/chinook/playlists");
