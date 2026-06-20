@@ -188,7 +188,7 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
     }
 
     private static string BuildTableEnhancementHead(string routePrefix)
-        => $"<link rel=\"stylesheet\" href=\"https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css\" /><link rel=\"stylesheet\" href=\"{routePrefix}/assets/efui-table.css\" /><script src=\"https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js\"></script><script defer src=\"{routePrefix}/assets/efui-table.js\"></script>";
+        => $"<link rel=\"stylesheet\" href=\"{routePrefix}/assets/tabulator.min.css\" /><link rel=\"stylesheet\" href=\"{routePrefix}/assets/efui-table.css\" /><script src=\"{routePrefix}/assets/tabulator.min.js\"></script><script defer src=\"{routePrefix}/assets/efui-table.js\"></script>";
 
     private static void RenderTableEnhancementShell(StringBuilder html, string routePrefix, EntityMetadata entity, RenderedListView view, bool showActions)
     {

@@ -42,6 +42,7 @@ app.Run();
 - CRUD pages over your EF Core entities
 - relationship-aware forms and list pages
 - server-rendered fallback with enhanced table browsing
+- local, package-owned Tabulator assets for the enhanced list shell
 - relational EF Core behavior for supported database providers
 
 ## Model annotations
@@ -69,6 +70,7 @@ If no attribute is present, EF UI falls back to `Name`, `Title`, `Email`, then t
 
 - The package exposes the `UseEfUi` ASP.NET Core extension method.
 - The UI is designed for existing ASP.NET Core apps with a registered EF Core `DbContext`.
+- The enhanced list shell self-hosts its Tabulator assets instead of fetching them from a CDN.
 - When authorization is enabled, browsing routes accept `ReadOnly` or `Edit`, while create, update, and delete routes require `Edit`.
 
 ## Current limitations

@@ -114,9 +114,15 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     [Fact]
     public async Task Get_table_enhancement_assets_expose_tabulator_bootstrap_shell()
     {
+        var html = await _client.GetStringAsync("/simple/users");
         var script = await _client.GetStringAsync("/simple/assets/efui-table.js");
         var css = await _client.GetStringAsync("/simple/assets/efui-table.css");
+        var tabulatorScript = await _client.GetStringAsync("/simple/assets/tabulator.min.js");
+        var tabulatorCss = await _client.GetStringAsync("/simple/assets/tabulator.min.css");
 
+        html.Should().NotContain("unpkg.com");
+        html.Should().Contain("/simple/assets/tabulator.min.css");
+        html.Should().Contain("/simple/assets/tabulator.min.js");
         script.Should().Contain("Tabulator");
         script.Should().Contain("efui-table-config");
         script.Should().Contain("initialSort");
@@ -147,6 +153,10 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         script.Should().Contain("clearIndexedQuery");
         script.Should().Contain("replaceBrowserUrl(targetListUrl, params)");
         script.Should().NotContain("params.set('offset', '0')");
+        tabulatorScript.Should().Contain("Tabulator");
+        tabulatorCss.Should().Contain(".tabulator");
+        tabulatorScript.Should().NotContain("unpkg.com");
+        tabulatorCss.Should().NotContain("unpkg.com");
         script.Should().NotContain("params.set('filter.' + filterIndex + '.field'");
         script.Should().NotContain("params.set('filter.' + filterIndex + '.op'");
         script.Should().NotContain("params.set('filter.' + filterIndex + '.value'");
