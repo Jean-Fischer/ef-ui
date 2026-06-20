@@ -146,6 +146,7 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         html.Should().Contain("data-role=\"chip-picker-search\"");
         html.Should().Contain("name=\"Tracks\" type=\"checkbox\"");
         html.Should().Contain("name=\"Tracks\" type=\"checkbox\" value=\"3\" disabled");
+        html.Should().Contain("name=\"__RequestVerificationToken\"");
         html.Should().NotContain("Manage related rows");
     }
 
@@ -173,14 +174,15 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     [Fact]
     public async Task Post_update_playlist_reconciles_track_selection()
     {
-        var response = await _client.PostAsync(
+        var response = await PostWithAntiforgeryAsync(
+            "/chinook/playlists/1/edit",
             "/chinook/playlists/1",
-            new FormUrlEncodedContent(new[]
+            new[]
             {
                 new KeyValuePair<string, string>("Name", "Music"),
                 new KeyValuePair<string, string>("Tracks", "2"),
                 new KeyValuePair<string, string>("Tracks", "3")
-            }));
+            });
 
         response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
         response.Headers.Location.Should().NotBeNull();
@@ -194,12 +196,13 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     [Fact]
     public async Task Post_update_playlist_with_no_tracks_clears_track_selection()
     {
-        var response = await _client.PostAsync(
+        var response = await PostWithAntiforgeryAsync(
+            "/chinook/playlists/1/edit",
             "/chinook/playlists/1",
-            new FormUrlEncodedContent(new[]
+            new[]
             {
                 new KeyValuePair<string, string>("Name", "Music")
-            }));
+            });
 
         response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
         response.Headers.Location.Should().NotBeNull();
@@ -213,12 +216,13 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     [Fact]
     public async Task Post_update_artist_with_no_albums_returns_required_relationship_validation_error()
     {
-        var response = await _client.PostAsync(
+        var response = await PostWithAntiforgeryAsync(
+            "/chinook/artists/1/edit",
             "/chinook/artists/1",
-            new FormUrlEncodedContent(new[]
+            new[]
             {
                 new KeyValuePair<string, string>("Name", "AC/DC")
-            }));
+            });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var html = await response.Content.ReadAsStringAsync();
@@ -324,10 +328,10 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     {
         var updatedName = $"Updated Genre {Guid.NewGuid():N}";
 
-        var response = await _client.PostAsync("/chinook/genres/1", new FormUrlEncodedContent(new Dictionary<string, string>
+        var response = await PostWithAntiforgeryAsync("/chinook/genres/1/edit", "/chinook/genres/1", new Dictionary<string, string>
         {
             ["Name"] = updatedName
-        }));
+        });
 
         response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.SeeOther);
         response.Headers.Location.Should().NotBeNull();
@@ -346,6 +350,22 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
         var end = html.IndexOf("</script>", start, StringComparison.Ordinal);
         end.Should().BeGreaterThan(start);
         return JsonDocument.Parse(html[start..end]);
+    }
+
+    private async Task<HttpResponseMessage> PostWithAntiforgeryAsync(string formPath, string postPath, IEnumerable<KeyValuePair<string, string>> fields)
+    {
+        var html = await _client.GetStringAsync(formPath);
+        var token = GetAntiforgeryToken(html);
+        var formValues = fields.ToList();
+        formValues.Add(new KeyValuePair<string, string>("__RequestVerificationToken", token));
+        return await _client.PostAsync(postPath, new FormUrlEncodedContent(formValues));
+    }
+
+    private static string GetAntiforgeryToken(string html)
+    {
+        var match = Regex.Match(html, @"name=""__RequestVerificationToken"" value=""(?<token>[^""]+)""", RegexOptions.Singleline);
+        match.Success.Should().BeTrue();
+        return match.Groups["token"].Value;
     }
 
     private static JsonElement GetColumn(JsonElement config, string field)

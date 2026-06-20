@@ -69,8 +69,8 @@ public static class EfUiApplicationBuilderExtensions
         RequireEditAuthorization(app.MapPost($"{options.RoutePrefix}/{{entity}}/{{id}}", (string entity, string id, HttpRequest request, IServiceProvider services)
             => UpdateEntityAsync(options, entity, id, request, services)), options);
 
-        RequireEditAuthorization(app.MapPost($"{options.RoutePrefix}/{{entity}}/{{id}}/delete", (string entity, string id, IServiceProvider services)
-            => DeleteEntityAsync(options, entity, id, services)), options);
+        RequireEditAuthorization(app.MapPost($"{options.RoutePrefix}/{{entity}}/{{id}}/delete", (string entity, string id, HttpRequest request, IServiceProvider services)
+            => DeleteEntityAsync(options, entity, id, request, services)), options);
     }
 
     private static IResult RenderIndex(EfUiOptions options, IServiceProvider services)
@@ -96,7 +96,9 @@ public static class EfUiApplicationBuilderExtensions
         }
 
         var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request, GetRenderableIssueMessages(discovery, entity));
-        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, view, CanMutate(options, request.HttpContext.User));
+        var canMutate = CanMutate(options, request.HttpContext.User);
+        var antiForgeryToken = canMutate ? EfUiRequestForgery.GetOrCreateRequestToken(request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory) : null;
+        var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, view, canMutate, antiForgeryToken);
         return Results.Content(html, HtmlContentType);
     }
 
@@ -111,7 +113,9 @@ public static class EfUiApplicationBuilderExtensions
         }
 
         var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request, GetRenderableIssueMessages(discovery, entity));
-        return Results.Text(JsonSerializer.Serialize(RenderedListPayloadFactory.Create(options.RoutePrefix, metadata, view, CanMutate(options, request.HttpContext.User))), "application/json");
+        var canMutate = CanMutate(options, request.HttpContext.User);
+        var antiForgeryToken = canMutate ? EfUiRequestForgery.GetOrCreateRequestToken(request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory) : null;
+        return Results.Text(JsonSerializer.Serialize(RenderedListPayloadFactory.Create(options.RoutePrefix, metadata, view, canMutate, antiForgeryToken)), "application/json");
     }
 
     private static IResult RenderCreateForm(EfUiOptions options, string entity, HttpContext httpContext, IServiceProvider services)
@@ -124,6 +128,7 @@ public static class EfUiApplicationBuilderExtensions
             return RenderMissingEntityResult(options.RoutePrefix, discovery, entity);
         }
 
+        var antiForgeryToken = EfUiRequestForgery.GetOrCreateRequestToken(httpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory);
         var html = new HtmlPageRenderer().RenderEditForm(
             options.RoutePrefix,
             metadata,
@@ -131,7 +136,8 @@ public static class EfUiApplicationBuilderExtensions
             true,
             new Dictionary<string, string[]>(),
             null,
-            fieldOptions: BuildFieldOptions(dbContext, metadata, null, null, isCreate: true));
+            fieldOptions: BuildFieldOptions(dbContext, metadata, null, null, isCreate: true),
+            antiForgeryToken: antiForgeryToken);
         return Results.Content(html, HtmlContentType);
     }
 
@@ -159,6 +165,7 @@ public static class EfUiApplicationBuilderExtensions
 
         await LoadEditableCollectionsAsync(dbContext, metadata, model, isCreate: false);
 
+        var antiForgeryToken = EfUiRequestForgery.GetOrCreateRequestToken(httpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory);
         var html = new HtmlPageRenderer().RenderEditForm(
             options.RoutePrefix,
             metadata,
@@ -166,7 +173,8 @@ public static class EfUiApplicationBuilderExtensions
             false,
             new Dictionary<string, string[]>(),
             key,
-            fieldOptions: BuildFieldOptions(dbContext, metadata, model, null, isCreate: false));
+            fieldOptions: BuildFieldOptions(dbContext, metadata, model, null, isCreate: false),
+            antiForgeryToken: antiForgeryToken);
         return Results.Content(html, HtmlContentType);
     }
 
@@ -181,11 +189,16 @@ public static class EfUiApplicationBuilderExtensions
         }
 
         var values = EnsureCollectionFieldsPresent(metadata, await ReadFormAsync(request), isCreate: true);
+        if (!EfUiRequestForgery.ValidateRequest(values, request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory))
+        {
+            return Results.BadRequest();
+        }
+
         var result = await CreateCrudService().CreateAsync(dbContext, entity, values);
 
         return result.IsSuccess
             ? Results.Redirect($"{options.RoutePrefix}/{entity}")
-            : CreateFailureResult(options.RoutePrefix, dbContext, entity, result, null, isCreate: true, submittedValues: values);
+            : CreateFailureResult(options.RoutePrefix, request.HttpContext, options.AntiforgeryKeyDirectory, dbContext, entity, result, null, isCreate: true, submittedValues: values);
     }
 
     private static async Task<IResult> UpdateEntityAsync(EfUiOptions options, string entity, string id, HttpRequest request, IServiceProvider services)
@@ -205,14 +218,19 @@ public static class EfUiApplicationBuilderExtensions
         }
 
         var values = EnsureCollectionFieldsPresent(metadata, await ReadFormAsync(request), isCreate: false);
+        if (!EfUiRequestForgery.ValidateRequest(values, request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory))
+        {
+            return Results.BadRequest();
+        }
+
         var result = await CreateCrudService().UpdateAsync(dbContext, entity, key, values);
 
         return result.IsSuccess
             ? Results.Redirect($"{options.RoutePrefix}/{entity}")
-            : CreateFailureResult(options.RoutePrefix, dbContext, entity, result, key, isCreate: false, submittedValues: values);
+            : CreateFailureResult(options.RoutePrefix, request.HttpContext, options.AntiforgeryKeyDirectory, dbContext, entity, result, key, isCreate: false, submittedValues: values);
     }
 
-    private static async Task<IResult> DeleteEntityAsync(EfUiOptions options, string entity, string id, IServiceProvider services)
+    private static async Task<IResult> DeleteEntityAsync(EfUiOptions options, string entity, string id, HttpRequest request, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
         var discovery = DiscoverEntities(dbContext);
@@ -228,6 +246,12 @@ public static class EfUiApplicationBuilderExtensions
             return Results.NotFound();
         }
 
+        var values = await ReadFormAsync(request);
+        if (!EfUiRequestForgery.ValidateRequest(values, request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory))
+        {
+            return Results.BadRequest();
+        }
+
         var result = await CreateCrudService().DeleteAsync(dbContext, entity, key);
         if (!result.IsSuccess)
         {
@@ -241,10 +265,14 @@ public static class EfUiApplicationBuilderExtensions
 
         var rows = ReadRows(dbContext, metadata.ClrType);
         var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata);
+        var canMutate = CanMutate(options, request.HttpContext.User);
+        var antiForgeryToken = canMutate ? EfUiRequestForgery.GetOrCreateRequestToken(request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory) : null;
         var html = new HtmlPageRenderer().RenderList(
             options.RoutePrefix,
             metadata,
-            new RenderedListView(CreateRenderedListRows(options.RoutePrefix, metadata, rows, relatedValueLookups)));
+            new RenderedListView(CreateRenderedListRows(options.RoutePrefix, metadata, rows, relatedValueLookups)),
+            canMutate,
+            antiForgeryToken);
         return Results.Content(html, HtmlContentType);
     }
 
@@ -634,7 +662,7 @@ public static class EfUiApplicationBuilderExtensions
         return bindResult.IsSuccess ? bindResult.Value : null;
     }
 
-    private static IResult CreateFailureResult(string routePrefix, DbContext dbContext, string entity, CrudOperationResult result, object? key, bool isCreate, IReadOnlyDictionary<string, string[]> submittedValues)
+    private static IResult CreateFailureResult(string routePrefix, HttpContext httpContext, string? antiforgeryKeyDirectory, DbContext dbContext, string entity, CrudOperationResult result, object? key, bool isCreate, IReadOnlyDictionary<string, string[]> submittedValues)
     {
         if (result.Errors.ContainsKey("entity") || result.Errors.ContainsKey("id"))
         {
@@ -654,6 +682,7 @@ public static class EfUiApplicationBuilderExtensions
             LoadEditableCollectionsAsync(dbContext, metadata, model, isCreate).GetAwaiter().GetResult();
         }
 
+        var antiForgeryToken = EfUiRequestForgery.GetOrCreateRequestToken(httpContext, routePrefix, antiforgeryKeyDirectory);
         var html = new HtmlPageRenderer().RenderEditForm(
             routePrefix,
             metadata,
@@ -662,7 +691,8 @@ public static class EfUiApplicationBuilderExtensions
             result.Errors,
             key,
             submittedValues,
-            BuildFieldOptions(dbContext, metadata, model, submittedValues, isCreate));
+            BuildFieldOptions(dbContext, metadata, model, submittedValues, isCreate),
+            antiForgeryToken: antiForgeryToken);
         return Results.Content(html, HtmlContentType, statusCode: StatusCodes.Status400BadRequest);
     }
 

@@ -5,7 +5,7 @@ namespace EfUi.Core.Rendering;
 
 public static class RenderedListPayloadFactory
 {
-    public static object Create(string routePrefix, EntityMetadata entity, RenderedListView view, bool showActions = true)
+    public static object Create(string routePrefix, EntityMetadata entity, RenderedListView view, bool showActions = true, string? antiForgeryToken = null)
     {
         var activeFilters = view.Filters
             .GroupBy(filter => filter.Field, StringComparer.Ordinal)
@@ -69,7 +69,7 @@ public static class RenderedListPayloadFactory
                     StringComparer.Ordinal);
                 if (showActions)
                 {
-                    values["__actions"] = BuildRowActionsMarkup(routePrefix, entity, row.Key);
+                    values["__actions"] = BuildRowActionsMarkup(routePrefix, entity, row.Key, antiForgeryToken);
                 }
                 return values;
             }).ToList(),
@@ -92,8 +92,8 @@ public static class RenderedListPayloadFactory
         };
     }
 
-    public static string Serialize(string routePrefix, EntityMetadata entity, RenderedListView view, bool showActions = true)
-        => JsonSerializer.Serialize(Create(routePrefix, entity, view, showActions))
+    public static string Serialize(string routePrefix, EntityMetadata entity, RenderedListView view, bool showActions = true, string? antiForgeryToken = null)
+        => JsonSerializer.Serialize(Create(routePrefix, entity, view, showActions, antiForgeryToken))
             .Replace("</script", "<\\/script", StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyList<string> BuildStatusItems(RenderedListView view)
@@ -109,9 +109,10 @@ public static class RenderedListPayloadFactory
             ? "contains"
             : "eq";
 
-    private static string BuildRowActionsMarkup(string routePrefix, EntityMetadata entity, string rowKey)
+    private static string BuildRowActionsMarkup(string routePrefix, EntityMetadata entity, string rowKey, string? antiForgeryToken)
     {
         var escapedKey = Uri.EscapeDataString(rowKey);
-        return $"<a class=\"efui-row-action-link\" href=\"{routePrefix}/{entity.RouteName}/{escapedKey}/edit\">Edit</a><form class=\"efui-row-action-form\" method=\"post\" action=\"{routePrefix}/{entity.RouteName}/{escapedKey}/delete\"><button class=\"efui-row-action-button\" type=\"submit\">Delete</button></form>";
+        var antiforgeryField = AntiforgeryMarkup.BuildHiddenInput(antiForgeryToken);
+        return $"<a class=\"efui-row-action-link\" href=\"{routePrefix}/{entity.RouteName}/{escapedKey}/edit\">Edit</a><form class=\"efui-row-action-form\" method=\"post\" action=\"{routePrefix}/{entity.RouteName}/{escapedKey}/delete\">{antiforgeryField}<button class=\"efui-row-action-button\" type=\"submit\">Delete</button></form>";
     }
 }

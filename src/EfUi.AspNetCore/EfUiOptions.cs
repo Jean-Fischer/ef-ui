@@ -13,4 +13,6 @@ public sealed class EfUiOptions
     public string ReadOnlyRoleName { get; set; } = "ReadOnly";
 
     public string EditRoleName { get; set; } = "Edit";
+
+    public string? AntiforgeryKeyDirectory { get; set; }
 }
