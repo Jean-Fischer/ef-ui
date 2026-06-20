@@ -1,12 +1,19 @@
+using System.Data.Common;
 using System.IO;
 using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using EfUi.AspNetCore;
 using EfUi.SampleHost.Data;
 using SampleGroup = EfUi.SampleHost.Models.Group;
 using FluentAssertions;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -733,6 +740,53 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    [Fact]
+    public async Task Get_duplicate_related_field_create_form_reads_customers_once()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var interceptor = new TableSelectCountingInterceptor("customers");
+
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            EnvironmentName = "Development"
+        });
+        builder.WebHost.UseTestServer();
+        builder.Services.AddDbContext<DuplicateRelationDbContext>(options => options
+            .UseSqlite(connection)
+            .AddInterceptors(interceptor));
+
+        await using var app = builder.Build();
+        app.UseEfUi(options =>
+        {
+            options.DbContextType = typeof(DuplicateRelationDbContext);
+            options.RoutePrefix = "/orders";
+            options.EnableInProduction = true;
+        });
+
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DuplicateRelationDbContext>();
+            await db.Database.EnsureCreatedAsync();
+            db.Customers.AddRange(
+                new DuplicateCustomer { Name = "Acme" },
+                new DuplicateCustomer { Name = "Globex" });
+            await db.SaveChangesAsync();
+        }
+
+        interceptor.Reset();
+        await app.StartAsync();
+
+        var client = app.GetTestClient();
+        var html = await client.GetStringAsync("/orders/orders/new");
+
+        html.Should().Contain("<select class=\"efui-select\" name=\"BillingCustomer\">");
+        html.Should().Contain("<select class=\"efui-select\" name=\"ShippingCustomer\">");
+        html.Should().Contain("Acme");
+        html.Should().Contain("Globex");
+        interceptor.CustomerSelectCount.Should().Be(1);
+    }
+
     private async Task<int> CreateGroupAsync(string name)
     {
         using var scope = _factory.Services.CreateScope();
@@ -816,5 +870,83 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         var bodyMatch = Regex.Match(html, @"<tbody>(.*?)</tbody>", RegexOptions.Singleline);
         bodyMatch.Success.Should().BeTrue();
         return Regex.Matches(bodyMatch.Groups[1].Value, @"<tr>", RegexOptions.Singleline).Count;
+    }
+
+    private sealed class TableSelectCountingInterceptor(string tableName) : DbCommandInterceptor
+    {
+        private readonly string _tableName = tableName;
+        private readonly List<string> _customerCommands = [];
+
+        public int CustomerSelectCount => _customerCommands.Count;
+
+        public void Reset() => _customerCommands.Clear();
+
+        public override InterceptionResult<DbDataReader> ReaderExecuting(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result)
+        {
+            Record(command);
+            return result;
+        }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            Record(command);
+            return ValueTask.FromResult(result);
+        }
+
+        private void Record(DbCommand command)
+        {
+            if (command.CommandText.Contains($"FROM \"{_tableName}\"", StringComparison.OrdinalIgnoreCase))
+            {
+                _customerCommands.Add(command.CommandText);
+            }
+        }
+    }
+
+    private sealed class DuplicateRelationDbContext(DbContextOptions<DuplicateRelationDbContext> options) : DbContext(options)
+    {
+        public DbSet<DuplicateCustomer> Customers => Set<DuplicateCustomer>();
+        public DbSet<DuplicateOrder> Orders => Set<DuplicateOrder>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<DuplicateCustomer>(builder =>
+            {
+                builder.ToTable("customers");
+                builder.HasKey(x => x.Id);
+                builder.Property(x => x.Name).IsRequired();
+            });
+
+            modelBuilder.Entity<DuplicateOrder>(builder =>
+            {
+                builder.ToTable("orders");
+                builder.HasKey(x => x.Id);
+                builder.HasOne(x => x.BillingCustomer)
+                    .WithMany()
+                    .HasForeignKey(x => x.BillingCustomerId);
+                builder.HasOne(x => x.ShippingCustomer)
+                    .WithMany()
+                    .HasForeignKey(x => x.ShippingCustomerId);
+            });
+        }
+    }
+
+    private sealed class DuplicateCustomer
+    {
+        public int Id { get; set; }
+
+        public string Name { get; set; } = string.Empty;
+    }
+
+    private sealed class DuplicateOrder
+    {
+        public int Id { get; set; }
+
+        public int BillingCustomerId { get; set; }
+
+        public int ShippingCustomerId { get; set; }
+
+        public DuplicateCustomer BillingCustomer { get; set; } = null!;
+
+        public DuplicateCustomer ShippingCustomer { get; set; } = null!;
     }
 }

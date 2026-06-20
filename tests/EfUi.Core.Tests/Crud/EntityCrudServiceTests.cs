@@ -1,3 +1,4 @@
+using System.Data.Common;
 using EfUi.Core.Binding;
 using EfUi.Core.Crud;
 using EfUi.Core.Metadata;
@@ -5,6 +6,7 @@ using EfUi.Core.Tests.TestDoubles;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Xunit;
 
 namespace EfUi.Core.Tests.Crud;
@@ -378,6 +380,53 @@ public class EntityCrudServiceTests
         result.Errors.Should().ContainKey("Albums");
     }
 
+    [Fact]
+    public async Task UpdateAsync_reconciles_optional_one_to_many_collection_without_loading_entire_child_table()
+    {
+        var interceptor = new UsersSelectCountingInterceptor();
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new SampleModelDbContext(
+            new DbContextOptionsBuilder<SampleModelDbContext>()
+                .UseSqlite(connection)
+                .AddInterceptors(interceptor)
+                .Options);
+
+        await db.Database.EnsureCreatedAsync();
+        db.Groups.Add(new Group { Name = "Admins" });
+
+        var users = Enumerable.Range(0, 100)
+            .Select(index => new User
+            {
+                Name = $"User {index:D3}",
+                Email = $"user{index:D3}@example.com",
+                IsActive = true,
+                CreatedAt = new DateTime(2026, 5, 17)
+            })
+            .ToList();
+        db.Users.AddRange(users);
+        await db.SaveChangesAsync();
+
+        var selectedIds = users.Take(3).Select(user => user.Id).ToArray();
+        interceptor.Reset();
+
+        var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+        var result = await sut.UpdateAsync(db, "groups", 1, new Dictionary<string, string[]>
+        {
+            ["Name"] = ["Admins"],
+            ["Users"] = selectedIds.Select(id => id.ToString()).ToArray()
+        });
+
+        result.IsSuccess.Should().BeTrue();
+
+        var userSelects = interceptor.Commands
+            .Where(command => command.Contains("FROM \"Users\"", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        userSelects.Should().NotBeEmpty();
+        userSelects.Should().OnlyContain(command => command.Contains("WHERE", StringComparison.OrdinalIgnoreCase));
+        users.Take(3).Select(user => user.GroupId).Should().OnlyContain(groupId => groupId == 1);
+    }
+
     private static async Task<SampleModelDbContext> CreateDbAsync()
     {
         var options = new DbContextOptionsBuilder<SampleModelDbContext>()
@@ -559,5 +608,34 @@ public class EntityCrudServiceTests
         public string Title { get; set; } = string.Empty;
         public int ArtistId { get; set; }
         public RequiredArtist Artist { get; set; } = null!;
+    }
+
+    private sealed class UsersSelectCountingInterceptor : DbCommandInterceptor
+    {
+        private readonly List<string> _commands = [];
+
+        public IReadOnlyList<string> Commands => _commands;
+
+        public void Reset() => _commands.Clear();
+
+        public override InterceptionResult<DbDataReader> ReaderExecuting(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result)
+        {
+            Record(command);
+            return result;
+        }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            Record(command);
+            return ValueTask.FromResult(result);
+        }
+
+        private void Record(DbCommand command)
+        {
+            if (command.CommandText.Contains("FROM \"Users\"", StringComparison.OrdinalIgnoreCase))
+            {
+                _commands.Add(command.CommandText);
+            }
+        }
     }
 }

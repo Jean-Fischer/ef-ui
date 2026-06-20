@@ -125,7 +125,7 @@ public static class EfUiApplicationBuilderExtensions
             true,
             new Dictionary<string, string[]>(),
             null,
-            fieldOptions: BuildFieldOptions(dbContext, metadata, null, null));
+            fieldOptions: BuildFieldOptions(dbContext, metadata, null, null, isCreate: true));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -160,7 +160,7 @@ public static class EfUiApplicationBuilderExtensions
             false,
             new Dictionary<string, string[]>(),
             key,
-            fieldOptions: BuildFieldOptions(dbContext, metadata, model, null));
+            fieldOptions: BuildFieldOptions(dbContext, metadata, model, null, isCreate: false));
         return Results.Content(html, HtmlContentType);
     }
 
@@ -656,14 +656,15 @@ public static class EfUiApplicationBuilderExtensions
             result.Errors,
             key,
             submittedValues,
-            BuildFieldOptions(dbContext, metadata, model, submittedValues));
+            BuildFieldOptions(dbContext, metadata, model, submittedValues, isCreate));
         return Results.Content(html, HtmlContentType, statusCode: StatusCodes.Status400BadRequest);
     }
 
-    private static IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>> BuildFieldOptions(DbContext dbContext, EntityMetadata metadata, object? model, IReadOnlyDictionary<string, string[]>? submittedValues)
+    private static IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>> BuildFieldOptions(DbContext dbContext, EntityMetadata metadata, object? model, IReadOnlyDictionary<string, string[]>? submittedValues, bool isCreate)
     {
         var options = new Dictionary<string, IReadOnlyList<RelatedEntityOption>>(StringComparer.OrdinalIgnoreCase);
-        var fields = metadata.CreateEditableFields.Concat(metadata.UpdateEditableFields).DistinctBy(field => field.Name).ToList();
+        var fields = isCreate ? metadata.CreateEditableFields : metadata.UpdateEditableFields;
+        var relatedRowsCache = new Dictionary<Type, IReadOnlyList<object>>();
         var oneToManyFields = fields.Where(field => field.Kind == EditableFieldKind.Collection && field.CollectionRelationshipKind == CollectionRelationshipKind.OneToMany && field.RelatedClrType is not null).ToList();
         var ownerLabels = oneToManyFields.Count == 0
             ? null
@@ -681,12 +682,24 @@ public static class EfUiApplicationBuilderExtensions
             }
 
             var selectedValues = GetSelectedValues(dbContext, field, model, submittedValues);
-            options[field.Name] = ReadRows(dbContext, field.RelatedClrType)
+            var relatedRows = GetRelatedRows(dbContext, field.RelatedClrType, relatedRowsCache);
+            options[field.Name] = relatedRows
                 .Select(row => CreateRelatedEntityOption(dbContext, metadata, field, row, selectedValues, model, ownerLabels))
                 .ToList();
         }
 
         return options;
+    }
+
+    private static IReadOnlyList<object> GetRelatedRows(DbContext dbContext, Type relatedClrType, Dictionary<Type, IReadOnlyList<object>> relatedRowsCache)
+    {
+        if (!relatedRowsCache.TryGetValue(relatedClrType, out var relatedRows))
+        {
+            relatedRows = ReadRows(dbContext, relatedClrType);
+            relatedRowsCache[relatedClrType] = relatedRows;
+        }
+
+        return relatedRows;
     }
 
     private static RelatedEntityOption CreateRelatedEntityOption(DbContext dbContext, EntityMetadata metadata, EditableFieldMetadata field, object row, HashSet<string> selectedValues, object? model, IReadOnlyDictionary<string, string>? ownerLabels)

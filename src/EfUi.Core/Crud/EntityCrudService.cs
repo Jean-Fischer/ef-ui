@@ -219,15 +219,26 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
             return failure;
         }
 
-        if (!TryBindSelectedChildKeys(rawValues, childKeyProperty.ClrType, field.Name, out var selectedChildKeys, out failure))
+        if (!TryBindSelectedChildKeys(rawValues, childKeyProperty.ClrType, field.Name, out var selectedChildKeys, out var selectedChildValues, out failure))
         {
             return failure;
         }
 
         var parentKeyValue = instance.GetType().GetProperty(entity.PrimaryKeyProperty.Name)?.GetValue(instance);
-        var childrenByKey = BuildChildrenByKey(dbContext, childEntityType.ClrType, childKeyProperty.Name);
+        var selectedChildren = new Dictionary<string, object>(StringComparer.Ordinal);
 
-        if (!TryValidateSelectedChildren(childrenByKey, selectedChildKeys, childForeignKeyProperty.Name, parentKeyValue, field.Name, out failure))
+        foreach (var selectedChildKey in selectedChildKeys)
+        {
+            var selectedChild = await dbContext.FindAsync(childEntityType.ClrType, selectedChildValues[selectedChildKey]!);
+            if (selectedChild is null)
+            {
+                return CrudOperationResult.Failure(field.Name, "Selected related row not found.");
+            }
+
+            selectedChildren[selectedChildKey] = selectedChild;
+        }
+
+        if (!TryValidateSelectedChildren(selectedChildren, childForeignKeyProperty.Name, parentKeyValue, field.Name, out failure))
         {
             return failure;
         }
@@ -238,7 +249,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
             return CrudOperationResult.Failure(field.Name, "Required related rows cannot be removed without reassignment.");
         }
 
-        ApplyChildAssignments(childrenByKey, childForeignKeyProperty.Name, parentKeyValue, selectedChildKeys, removedChildren);
+        ApplyChildAssignments(selectedChildren, childForeignKeyProperty.Name, parentKeyValue, removedChildren);
         return CrudOperationResult.Success();
     }
 
@@ -272,9 +283,11 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         return true;
     }
 
-    private bool TryBindSelectedChildKeys(IReadOnlyList<string> rawValues, Type childKeyType, string fieldName, out HashSet<string> selectedChildKeys, out CrudOperationResult failure)
+    private bool TryBindSelectedChildKeys(IReadOnlyList<string> rawValues, Type childKeyType, string fieldName, out HashSet<string> selectedChildKeys, out Dictionary<string, object?> selectedChildValues, out CrudOperationResult failure)
     {
         selectedChildKeys = new HashSet<string>(StringComparer.Ordinal);
+        selectedChildValues = new Dictionary<string, object?>(StringComparer.Ordinal);
+
         foreach (var selectedValue in rawValues.Where(value => !string.IsNullOrWhiteSpace(value)))
         {
             var bindResult = binder.Bind(childKeyType, selectedValue);
@@ -284,29 +297,19 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
                 return false;
             }
 
-            selectedChildKeys.Add(FormatValue(bindResult.Value));
+            var formattedValue = FormatValue(bindResult.Value);
+            selectedChildKeys.Add(formattedValue);
+            selectedChildValues[formattedValue] = bindResult.Value;
         }
 
         failure = CrudOperationResult.Success();
         return true;
     }
 
-    private static IReadOnlyDictionary<string, object> BuildChildrenByKey(DbContext dbContext, Type childEntityClrType, string childKeyPropertyName)
-        => ReadRows(dbContext, childEntityClrType).ToDictionary(
-            child => FormatValue(child.GetType().GetProperty(childKeyPropertyName)?.GetValue(child)),
-            child => child,
-            StringComparer.Ordinal);
-
-    private static bool TryValidateSelectedChildren(IReadOnlyDictionary<string, object> childrenByKey, HashSet<string> selectedChildKeys, string childForeignKeyPropertyName, object? parentKeyValue, string fieldName, out CrudOperationResult failure)
+    private static bool TryValidateSelectedChildren(IReadOnlyDictionary<string, object> selectedChildren, string childForeignKeyPropertyName, object? parentKeyValue, string fieldName, out CrudOperationResult failure)
     {
-        foreach (var selectedChildKey in selectedChildKeys)
+        foreach (var selectedChild in selectedChildren.Values)
         {
-            if (!childrenByKey.TryGetValue(selectedChildKey, out var selectedChild))
-            {
-                failure = CrudOperationResult.Failure(fieldName, "Selected related row not found.");
-                return false;
-            }
-
             var ownerValue = selectedChild.GetType().GetProperty(childForeignKeyPropertyName)?.GetValue(selectedChild);
             if (ownerValue is not null && !Equals(ownerValue, parentKeyValue))
             {
@@ -323,11 +326,10 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         => GetCurrentChildren(instance, navigationPropertyName)
             .Where(child => !selectedChildKeys.Contains(FormatValue(child.GetType().GetProperty(childKeyPropertyName)?.GetValue(child))));
 
-    private static void ApplyChildAssignments(IReadOnlyDictionary<string, object> childrenByKey, string childForeignKeyPropertyName, object? parentKeyValue, HashSet<string> selectedChildKeys, IReadOnlyList<object> removedChildren)
+    private static void ApplyChildAssignments(IReadOnlyDictionary<string, object> selectedChildren, string childForeignKeyPropertyName, object? parentKeyValue, IReadOnlyList<object> removedChildren)
     {
-        foreach (var selectedChildKey in selectedChildKeys)
+        foreach (var selectedChild in selectedChildren.Values)
         {
-            var selectedChild = childrenByKey[selectedChildKey];
             selectedChild.GetType().GetProperty(childForeignKeyPropertyName)?.SetValue(selectedChild, parentKeyValue);
         }
 
@@ -335,17 +337,6 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
         {
             removedChild.GetType().GetProperty(childForeignKeyPropertyName)?.SetValue(removedChild, null);
         }
-    }
-
-    private static IReadOnlyList<object> ReadRows(DbContext dbContext, Type entityClrType)
-    {
-        var setMethod = typeof(DbContext).GetMethods()
-            .Single(method => method.Name == nameof(DbContext.Set)
-                              && method.IsGenericMethodDefinition
-                              && method.GetParameters().Length == 0);
-
-        var queryable = (System.Collections.IEnumerable)setMethod.MakeGenericMethod(entityClrType).Invoke(dbContext, null)!;
-        return queryable.Cast<object>().ToList();
     }
 
     private static IEnumerable<object> GetCurrentChildren(object instance, string navigationPropertyName)
