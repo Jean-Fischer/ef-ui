@@ -36,6 +36,12 @@ public static class EfUiApplicationBuilderExtensions
         RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/assets/efui.css", ()
             => Results.Text(EfUiFormCss.Content, "text/css")), options);
 
+        RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/assets/tabulator.min.css", ()
+            => Results.Text(EfUiTabulatorAssets.StylesheetContent, "text/css")), options);
+
+        RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/assets/tabulator.min.js", ()
+            => Results.Text(EfUiTabulatorAssets.ScriptContent, "text/javascript")), options);
+
         RequireBrowserAuthorization(app.MapGet($"{options.RoutePrefix}/assets/efui-table.css", ()
             => Results.Text(EfUiTableAssets.StylesheetContent, "text/css")), options);
 
