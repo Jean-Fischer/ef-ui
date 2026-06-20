@@ -79,7 +79,17 @@ internal static class EfUiRequestForgery
         var baseDirectory = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (string.IsNullOrWhiteSpace(baseDirectory))
         {
-            baseDirectory = Path.GetTempPath();
+            baseDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        }
+
+        if (string.IsNullOrWhiteSpace(baseDirectory))
+        {
+            baseDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        }
+
+        if (string.IsNullOrWhiteSpace(baseDirectory))
+        {
+            throw new InvalidOperationException("Could not resolve a private application data directory for antiforgery keys.");
         }
 
         return new DirectoryInfo(Path.Combine(baseDirectory, "EfUi", "AntiforgeryKeys"));
