@@ -8,6 +8,14 @@ namespace EfUi.Core.Tests.Rendering;
 
 public class HtmlPageRendererTests
 {
+    private const string DateTimeIsoPattern = @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,7})?)?(Z|[+-]\d{2}:\d{2})?$";
+
+    private enum SampleStatus
+    {
+        Draft,
+        Published
+    }
+
     [Fact]
     public void RenderIndex_contains_entity_links()
     {
@@ -663,7 +671,7 @@ public class HtmlPageRendererTests
     }
 
     [Fact]
-    public void RenderEditForm_prefers_submitted_values_over_model_values()
+    public void RenderEditForm_renders_type_specific_controls_for_supported_scalars()
     {
         var sut = new HtmlPageRenderer();
         var metadata = new EntityMetadata(
@@ -675,34 +683,156 @@ public class HtmlPageRendererTests
             {
                 PrimaryKey("Id", typeof(int)),
                 Editable("Name", typeof(string)),
-                Editable("Email", typeof(string)),
+                Editable("IsActive", typeof(bool)),
+                Editable("IsArchived", typeof(bool?)),
+                Editable("Quantity", typeof(int)),
+                Editable("Status", typeof(SampleStatus)),
                 Editable("CreatedAt", typeof(DateTime))
             },
             new[]
             {
                 Editable("Name", typeof(string)),
-                Editable("Email", typeof(string)),
+                Editable("IsActive", typeof(bool)),
+                Editable("IsArchived", typeof(bool?)),
+                Editable("Quantity", typeof(int)),
+                Editable("Status", typeof(SampleStatus)),
                 Editable("CreatedAt", typeof(DateTime))
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string)),
+                ScalarField("IsActive", typeof(bool), isRequired: true),
+                ScalarField("IsArchived", typeof(bool?)),
+                ScalarField("Quantity", typeof(int)),
+                ScalarField("Status", typeof(SampleStatus), isRequired: true),
+                ScalarField("CreatedAt", typeof(DateTime))
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string)),
+                ScalarField("IsActive", typeof(bool), isRequired: true),
+                ScalarField("IsArchived", typeof(bool?)),
+                ScalarField("Quantity", typeof(int)),
+                ScalarField("Status", typeof(SampleStatus), isRequired: true),
+                ScalarField("CreatedAt", typeof(DateTime))
             });
 
         var html = sut.RenderEditForm(
             "/efui",
             metadata,
-            new UserRow { Id = 7, Name = "Original", Email = "original@example.com", CreatedAt = new DateTime(2026, 5, 17, 10, 0, 0) },
+            new UserRow
+            {
+                Id = 7,
+                Name = "Ada",
+                IsActive = true,
+                IsArchived = null,
+                Quantity = 42,
+                Status = SampleStatus.Published,
+                CreatedAt = new DateTime(2026, 5, 17, 10, 30, 0)
+            },
             isCreate: false,
-            errors: new Dictionary<string, string[]> { ["CreatedAt"] = new[] { "Invalid value." } },
+            errors: new Dictionary<string, string[]>(),
+            key: 7);
+
+        html.Should().Contain("name=\"Name\" value=\"Ada\"");
+        html.Should().Contain("type=\"checkbox\" name=\"IsActive\" value=\"true\" checked");
+        html.Should().Contain("type=\"hidden\" name=\"IsActive\" value=\"false\"");
+        html.IndexOf("type=\"checkbox\" name=\"IsActive\" value=\"true\" checked", StringComparison.Ordinal).Should().BeLessThan(html.IndexOf("type=\"hidden\" name=\"IsActive\" value=\"false\"", StringComparison.Ordinal));
+        html.Should().Contain("<select class=\"efui-select\" name=\"IsArchived\">");
+        html.Should().Contain("<option value=\"\" selected></option>");
+        html.Should().Contain("<option value=\"true\">True</option>");
+        html.Should().Contain("<option value=\"false\">False</option>");
+        html.Should().Contain("type=\"number\" step=\"1\" name=\"Quantity\" value=\"42\"");
+        html.Should().Contain("<select class=\"efui-select\" name=\"Status\">");
+        html.Should().Contain("<option value=\"Draft\">Draft</option>");
+        html.Should().Contain("<option value=\"Published\" selected>Published</option>");
+        html.Should().Contain("name=\"CreatedAt\" value=\"2026-05-17T10:30:00.0000000\"");
+        html.Should().Contain($"pattern=\"{DateTimeIsoPattern}\"");
+        html.Should().Contain("placeholder=\"2026-05-17T10:30:00Z\"");
+    }
+
+    [Fact]
+    public void RenderEditForm_prefers_submitted_values_over_model_values_for_typed_scalar_controls()
+    {
+        var sut = new HtmlPageRenderer();
+        var metadata = new EntityMetadata(
+            "User",
+            "users",
+            typeof(UserRow),
+            PrimaryKey("Id", typeof(int)),
+            new[]
+            {
+                PrimaryKey("Id", typeof(int)),
+                Editable("Name", typeof(string)),
+                Editable("IsActive", typeof(bool)),
+                Editable("IsArchived", typeof(bool?)),
+                Editable("Quantity", typeof(int)),
+                Editable("Status", typeof(SampleStatus)),
+                Editable("CreatedAt", typeof(DateTime))
+            },
+            new[]
+            {
+                Editable("Name", typeof(string)),
+                Editable("IsActive", typeof(bool)),
+                Editable("IsArchived", typeof(bool?)),
+                Editable("Quantity", typeof(int)),
+                Editable("Status", typeof(SampleStatus)),
+                Editable("CreatedAt", typeof(DateTime))
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string)),
+                ScalarField("IsActive", typeof(bool), isRequired: true),
+                ScalarField("IsArchived", typeof(bool?)),
+                ScalarField("Quantity", typeof(int)),
+                ScalarField("Status", typeof(SampleStatus), isRequired: true),
+                ScalarField("CreatedAt", typeof(DateTime))
+            },
+            new[]
+            {
+                ScalarField("Name", typeof(string)),
+                ScalarField("IsActive", typeof(bool), isRequired: true),
+                ScalarField("IsArchived", typeof(bool?)),
+                ScalarField("Quantity", typeof(int)),
+                ScalarField("Status", typeof(SampleStatus), isRequired: true),
+                ScalarField("CreatedAt", typeof(DateTime))
+            });
+
+        var html = sut.RenderEditForm(
+            "/efui",
+            metadata,
+            new UserRow
+            {
+                Id = 7,
+                Name = "Original",
+                IsActive = true,
+                IsArchived = true,
+                Quantity = 42,
+                Status = SampleStatus.Published,
+                CreatedAt = new DateTime(2026, 5, 17, 10, 0, 0)
+            },
+            isCreate: false,
+            errors: new Dictionary<string, string[]> { ["CreatedAt"] = ["Invalid value."] },
             key: 7,
             submittedValues: new Dictionary<string, string[]>
             {
                 ["Name"] = ["Edited"],
-                ["Email"] = ["edited@example.com"],
+                ["IsActive"] = ["false"],
+                ["IsArchived"] = [string.Empty],
+                ["Quantity"] = ["99"],
+                ["Status"] = ["Draft"],
                 ["CreatedAt"] = ["not-a-date"]
             });
 
         html.Should().Contain("name=\"Name\" value=\"Edited\"");
-        html.Should().Contain("name=\"Email\" value=\"edited@example.com\"");
+        html.Should().Contain("type=\"checkbox\" name=\"IsActive\" value=\"true\"");
+        html.Should().NotContain("type=\"checkbox\" name=\"IsActive\" value=\"true\" checked");
+        html.Should().Contain("type=\"hidden\" name=\"IsActive\" value=\"false\"");
+        html.Should().Contain("<select class=\"efui-select\" name=\"IsArchived\"><option value=\"\" selected></option>");
+        html.Should().Contain("type=\"number\" step=\"1\" name=\"Quantity\" value=\"99\"");
+        html.Should().Contain("<option value=\"Draft\" selected>Draft</option>");
         html.Should().Contain("name=\"CreatedAt\" value=\"not-a-date\"");
-        html.Should().NotContain("original@example.com");
+        html.Should().NotContain("2026-05-17T10:00:00.0000000");
     }
 
     [Fact]
@@ -779,8 +909,8 @@ public class HtmlPageRendererTests
     private static EntityPropertyMetadata Editable(string name, Type clrType)
         => new(name, clrType, IsEditableOnCreate: true, IsEditableOnUpdate: true);
 
-    private static EditableFieldMetadata ScalarField(string name, Type clrType)
-        => new(name, EditableFieldKind.Scalar, clrType, name, null, null, false);
+    private static EditableFieldMetadata ScalarField(string name, Type clrType, bool isRequired = false)
+        => new(name, EditableFieldKind.Scalar, clrType, name, null, null, isRequired);
 
     private static EditableFieldMetadata ReferenceField(string name, Type clrType, Type relatedClrType, bool isRequired)
         => new(name, EditableFieldKind.Reference, clrType, $"{name}Id", name, relatedClrType, isRequired);
@@ -812,6 +942,10 @@ public class HtmlPageRendererTests
         public int Id { get; init; }
         public string Name { get; init; } = string.Empty;
         public string Email { get; init; } = string.Empty;
+        public bool IsActive { get; init; }
+        public bool? IsArchived { get; init; }
+        public int Quantity { get; init; }
+        public SampleStatus Status { get; init; }
         public DateTime CreatedAt { get; init; }
         public int? GroupId { get; init; }
     }

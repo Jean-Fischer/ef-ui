@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -334,22 +335,160 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         return FormatValue(source);
     }
 
+    private const string DateTimeInputPattern = @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,7})?)?(Z|[+-]\d{2}:\d{2})?$";
+    private const string DateTimeInputPlaceholder = "2026-05-17T10:30:00Z";
+
     private static void RenderScalarField(StringBuilder html, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string[]>? submittedValues)
     {
-        var propertyName = field.ScalarPropertyName ?? field.Name;
-        string value;
-        if (submittedValues is not null && submittedValues.TryGetValue(field.Name, out var submittedValue))
+        var actualType = Nullable.GetUnderlyingType(field.ValueType) ?? field.ValueType;
+        var value = GetScalarFieldValue(field, model, submittedValues);
+
+        if (actualType == typeof(bool))
         {
-            value = submittedValue.FirstOrDefault() ?? string.Empty;
-        }
-        else
-        {
-            value = model is null
-                ? string.Empty
-                : FormatValue(model.GetType().GetProperty(propertyName)?.GetValue(model));
+            if (Nullable.GetUnderlyingType(field.ValueType) is not null)
+            {
+                RenderNullableBooleanField(html, field, value);
+            }
+            else
+            {
+                RenderBooleanField(html, field, value);
+            }
+
+            return;
         }
 
-        html.Append($"<input class=\"efui-input\" name=\"{field.Name}\" value=\"{WebUtility.HtmlEncode(value)}\" />");
+        if (actualType == typeof(DateTime))
+        {
+            RenderDateTimeField(html, field, value);
+            return;
+        }
+
+        if (actualType.IsEnum)
+        {
+            RenderEnumField(html, field, value, actualType);
+            return;
+        }
+
+        if (IsNumberType(actualType))
+        {
+            RenderNumberField(html, field, value, actualType);
+            return;
+        }
+
+        RenderTextField(html, field, value);
+    }
+
+    private static void RenderTextField(StringBuilder html, EditableFieldMetadata field, string value)
+        => html.Append($"<input class=\"efui-input\" name=\"{field.Name}\" value=\"{WebUtility.HtmlEncode(value)}\" />");
+
+    private static void RenderNumberField(StringBuilder html, EditableFieldMetadata field, string value, Type actualType)
+    {
+        var step = IsIntegralType(actualType) ? "1" : "any";
+        html.Append($"<input class=\"efui-input\" type=\"number\" step=\"{step}\" name=\"{field.Name}\" value=\"{WebUtility.HtmlEncode(value)}\" />");
+    }
+
+    private static void RenderDateTimeField(StringBuilder html, EditableFieldMetadata field, string value)
+        => html.Append($"<input class=\"efui-input\" name=\"{field.Name}\" value=\"{WebUtility.HtmlEncode(value)}\" placeholder=\"{DateTimeInputPlaceholder}\" pattern=\"{DateTimeInputPattern}\" />");
+
+    private static void RenderBooleanField(StringBuilder html, EditableFieldMetadata field, string value)
+    {
+        var isChecked = bool.TryParse(value, out var parsed) && parsed;
+        html.Append($"<input type=\"checkbox\" name=\"{field.Name}\" value=\"true\"{(isChecked ? " checked" : string.Empty)} />");
+        html.Append($"<input type=\"hidden\" name=\"{field.Name}\" value=\"false\" />");
+    }
+
+    private static void RenderNullableBooleanField(StringBuilder html, EditableFieldMetadata field, string value)
+    {
+        var selectedValue = string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : bool.TryParse(value, out var parsed)
+                ? parsed.ToString().ToLowerInvariant()
+                : string.Empty;
+
+        html.Append($"<select class=\"efui-select\" name=\"{field.Name}\">");
+        html.Append($"<option value=\"\"{(selectedValue.Length == 0 ? " selected" : string.Empty)}></option>");
+        html.Append($"<option value=\"true\"{(string.Equals(selectedValue, "true", StringComparison.OrdinalIgnoreCase) ? " selected" : string.Empty)}>True</option>");
+        html.Append($"<option value=\"false\"{(string.Equals(selectedValue, "false", StringComparison.OrdinalIgnoreCase) ? " selected" : string.Empty)}>False</option>");
+        html.Append("</select>");
+    }
+
+    private static void RenderEnumField(StringBuilder html, EditableFieldMetadata field, string value, Type actualType)
+    {
+        var allowBlank = Nullable.GetUnderlyingType(field.ValueType) is not null || !field.IsRequired;
+        html.Append($"<select class=\"efui-select\" name=\"{field.Name}\">");
+
+        if (allowBlank)
+        {
+            html.Append($"<option value=\"\"{(string.IsNullOrWhiteSpace(value) ? " selected" : string.Empty)}></option>");
+        }
+
+        foreach (var enumValue in Enum.GetValues(actualType).Cast<object>())
+        {
+            var optionValue = Enum.GetName(actualType, enumValue) ?? enumValue.ToString() ?? string.Empty;
+            var selected = string.Equals(value, optionValue, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, enumValue.ToString(), StringComparison.OrdinalIgnoreCase)
+                ? " selected"
+                : string.Empty;
+            html.Append($"<option value=\"{WebUtility.HtmlEncode(optionValue)}\"{selected}>{WebUtility.HtmlEncode(optionValue)}</option>");
+        }
+
+        html.Append("</select>");
+    }
+
+    private static string GetScalarFieldValue(EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string[]>? submittedValues)
+    {
+        if (submittedValues is not null && submittedValues.TryGetValue(field.Name, out var submittedValue))
+        {
+            return submittedValue.FirstOrDefault() ?? string.Empty;
+        }
+
+        var propertyName = field.ScalarPropertyName ?? field.Name;
+        var source = model is null ? null : model.GetType().GetProperty(propertyName)?.GetValue(model);
+        return FormatScalarValue(source, field.ValueType);
+    }
+
+    private static bool IsNumberType(Type type)
+    {
+        var actual = Nullable.GetUnderlyingType(type) ?? type;
+
+        return actual == typeof(byte)
+            || actual == typeof(short)
+            || actual == typeof(int)
+            || actual == typeof(long)
+            || actual == typeof(float)
+            || actual == typeof(double)
+            || actual == typeof(decimal);
+    }
+
+    private static bool IsIntegralType(Type type)
+    {
+        var actual = Nullable.GetUnderlyingType(type) ?? type;
+
+        return actual == typeof(byte)
+            || actual == typeof(short)
+            || actual == typeof(int)
+            || actual == typeof(long);
+    }
+
+    private static string FormatScalarValue(object? value, Type targetType)
+    {
+        if (value is null)
+        {
+            return string.Empty;
+        }
+
+        var actualType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+        return actualType switch
+        {
+            _ when actualType == typeof(bool) => bool.Parse(value.ToString()!).ToString().ToLowerInvariant(),
+            _ when actualType == typeof(DateTime) => ((DateTime)value).ToString("O", CultureInfo.InvariantCulture),
+            _ when actualType.IsEnum => Enum.GetName(actualType, value) ?? value.ToString() ?? string.Empty,
+            _ when IsNumberType(actualType) => value is IFormattable formattable
+                ? formattable.ToString(null, CultureInfo.InvariantCulture) ?? string.Empty
+                : value.ToString() ?? string.Empty,
+            _ => value.ToString() ?? string.Empty
+        };
     }
 
     private static void RenderReferenceField(StringBuilder html, EditableFieldMetadata field, object? model, IReadOnlyDictionary<string, string[]>? submittedValues, IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>>? fieldOptions)

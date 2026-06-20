@@ -80,5 +80,5 @@ If no attribute is present, EF UI falls back to `Name`, `Title`, `Email`, then t
 - Entities must have a single-column primary key.
 - Composite primary keys are not supported yet.
 - Composite foreign keys are not supported yet.
-- The editor currently supports common scalar CLR types such as `string`, numeric types, `bool`, `DateTime`, `Guid`, and enums.
+- The editor currently supports common scalar CLR types such as `string`, numeric types, `bool`, `DateTime`, `Guid`, and enums. The renderer uses type-specific controls for the supported scalar set: checkbox/select variants for booleans, number inputs for numeric types, a text input with ISO-8601 subset validation for `DateTime`, and text/select fallbacks for the remaining supported scalars.
 - Very large tables are still rendered through in-memory row loading, so server-side query execution and pagination are not fully provider-driven yet.
