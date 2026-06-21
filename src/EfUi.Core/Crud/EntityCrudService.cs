@@ -76,7 +76,7 @@ public sealed class EntityCrudService(IEntityMetadataProvider metadataProvider, 
 
     private EntityMetadata? ResolveEntity(DbContext dbContext, string entityRoute, out CrudOperationResult? failure)
     {
-        var entity = metadataProvider.GetEntities(dbContext).SingleOrDefault(x => x.RouteName == entityRoute);
+        var entity = metadataProvider.GetEntities(dbContext).SingleOrDefault(x => string.Equals(x.RouteName, entityRoute, StringComparison.OrdinalIgnoreCase));
         if (entity is null)
         {
             failure = CrudOperationResult.Failure("entity", $"Unknown entity '{entityRoute}'.");

@@ -664,6 +664,31 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Post_create_user_with_token_but_without_matching_antiforgery_cookie_is_rejected()
+    {
+        var html = await _client.GetStringAsync("/simple/users/new");
+        var token = GetAntiforgeryToken(html);
+
+        using var noCookieClient = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            HandleCookies = false
+        });
+
+        var response = await noCookieClient.PostAsync("/simple/users", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["Name"] = "Missing Cookie",
+            ["Email"] = $"missing-cookie-{Guid.NewGuid():N}@example.com",
+            ["IsActive"] = "true",
+            ["CreatedAt"] = "2026-05-17T10:00:00",
+            ["Group"] = "1",
+            ["__RequestVerificationToken"] = token
+        }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Post_update_existing_row_redirects_and_persists_changes()
     {
         var originalEmail = $"before-{Guid.NewGuid():N}@example.com";
@@ -825,6 +850,54 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
 
         html.Should().Contain("<select class=\"efui-select\" name=\"BillingCustomer\">");
         html.Should().Contain("<select class=\"efui-select\" name=\"ShippingCustomer\">");
+        html.Should().Contain("Acme");
+        html.Should().Contain("Globex");
+        interceptor.CustomerSelectCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Get_duplicate_related_field_list_page_reads_customers_once()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var interceptor = new TableSelectCountingInterceptor("customers");
+
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            EnvironmentName = "Development"
+        });
+        builder.WebHost.UseTestServer();
+        builder.Services.AddDbContext<DuplicateRelationDbContext>(options => options
+            .UseSqlite(connection)
+            .AddInterceptors(interceptor));
+
+        await using var app = builder.Build();
+        app.UseEfUi(options =>
+        {
+            options.DbContextType = typeof(DuplicateRelationDbContext);
+            options.RoutePrefix = "/orders";
+            options.EnableInProduction = true;
+        });
+
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DuplicateRelationDbContext>();
+            await db.Database.EnsureCreatedAsync();
+            db.Customers.AddRange(
+                new DuplicateCustomer { Name = "Acme" },
+                new DuplicateCustomer { Name = "Globex" });
+            db.Orders.AddRange(
+                new DuplicateOrder { BillingCustomerId = 1, ShippingCustomerId = 2 },
+                new DuplicateOrder { BillingCustomerId = 2, ShippingCustomerId = 1 });
+            await db.SaveChangesAsync();
+        }
+
+        interceptor.Reset();
+        await app.StartAsync();
+
+        var client = app.GetTestClient();
+        var html = await client.GetStringAsync("/orders/orders");
+
         html.Should().Contain("Acme");
         html.Should().Contain("Globex");
         interceptor.CustomerSelectCount.Should().Be(1);

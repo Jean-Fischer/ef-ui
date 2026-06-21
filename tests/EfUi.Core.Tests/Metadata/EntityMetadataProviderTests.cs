@@ -32,6 +32,52 @@ public class EntityMetadataProviderTests
     }
 
     [Fact]
+    public void GetDiscoveryResult_returns_the_same_cached_result_for_the_same_ef_model()
+    {
+        using var db = CreateDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var first = sut.GetDiscoveryResult(db);
+        var second = sut.GetDiscoveryResult(db);
+
+        ReferenceEquals(first, second).Should().BeTrue();
+    }
+
+    [Fact]
+    public void GetEntities_keeps_unique_schema_mapped_table_routes_unprefixed()
+    {
+        using var db = CreateUniqueSchemaDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var routeNames = sut.GetEntities(db).Select(x => x.RouteName).ToList();
+
+        routeNames.Should().ContainSingle(route => route == "users");
+        routeNames.Should().NotContain("sales_users");
+    }
+
+    [Fact]
+    public void GetEntities_disambiguates_colliding_table_names_from_different_schemas()
+    {
+        using var db = CreateSchemaCollisionDb();
+        var sut = new EfEntityMetadataProvider();
+
+        var routeNames = sut.GetEntities(db).Select(x => x.RouteName).ToList();
+
+        routeNames.Should().Contain(new[] { "audit_users", "sales_users" });
+        routeNames.Should().OnlyHaveUniqueItems();
+    }
+
+    [Fact]
+    public void GetEntity_resolves_schema_scoped_routes_case_insensitively()
+    {
+        using var db = CreateSchemaCollisionDb();
+        var sut = new EfEntityMetadataProvider();
+
+        sut.GetEntity(db, "SALES_USERS").ClrType.Should().Be(typeof(SalesUser));
+        sut.GetEntity(db, "audit_users").ClrType.Should().Be(typeof(AuditUser));
+    }
+
+    [Fact]
     public void GetEntity_exposes_primary_key_metadata_for_non_conventional_key_names()
     {
         using var db = CreateAlternateKeyDb();
@@ -263,6 +309,24 @@ public class EntityMetadataProviderTests
         return db;
     }
 
+    private static SchemaCollisionDbContext CreateSchemaCollisionDb()
+    {
+        var options = new DbContextOptionsBuilder<SchemaCollisionDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        return new SchemaCollisionDbContext(options);
+    }
+
+    private static UniqueSchemaDbContext CreateUniqueSchemaDb()
+    {
+        var options = new DbContextOptionsBuilder<UniqueSchemaDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+
+        return new UniqueSchemaDbContext(options);
+    }
+
     private static UnsupportedScalarDbContext CreateUnsupportedScalarDb()
     {
         var options = new DbContextOptionsBuilder<UnsupportedScalarDbContext>()
@@ -377,6 +441,41 @@ public class EntityMetadataProviderTests
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<User>().ToTable("app_users");
+        }
+    }
+
+    private sealed class SchemaCollisionDbContext(DbContextOptions<SchemaCollisionDbContext> options) : DbContext(options)
+    {
+        public DbSet<SalesUser> SalesUsers => Set<SalesUser>();
+        public DbSet<AuditUser> AuditUsers => Set<AuditUser>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<SalesUser>(builder =>
+            {
+                builder.ToTable("users", "sales");
+                builder.HasKey(x => x.Id);
+            });
+
+            modelBuilder.Entity<AuditUser>(builder =>
+            {
+                builder.ToTable("users", "audit");
+                builder.HasKey(x => x.Id);
+            });
+        }
+    }
+
+    private sealed class UniqueSchemaDbContext(DbContextOptions<UniqueSchemaDbContext> options) : DbContext(options)
+    {
+        public DbSet<SalesUser> SalesUsers => Set<SalesUser>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<SalesUser>(builder =>
+            {
+                builder.ToTable("users", "sales");
+                builder.HasKey(x => x.Id);
+            });
         }
     }
 
@@ -610,6 +709,18 @@ public class EntityMetadataProviderTests
     {
         public int Id { get; set; }
         public string Code { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+    }
+
+    private sealed class SalesUser
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+    }
+
+    private sealed class AuditUser
+    {
+        public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
     }
 

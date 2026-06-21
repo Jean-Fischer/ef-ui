@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Reflection;
 using System.Security.Claims;
 using System.Text.Json;
 using EfUi.Core.Binding;
@@ -95,7 +97,8 @@ public static class EfUiApplicationBuilderExtensions
             return RenderMissingEntityResult(options.RoutePrefix, discovery, entity);
         }
 
-        var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request, GetRenderableIssueMessages(discovery, entity));
+        var rowCache = new RequestRowCache();
+        var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request, rowCache, GetRenderableIssueMessages(discovery, entity));
         var canMutate = CanMutate(options, request.HttpContext.User);
         var antiForgeryToken = canMutate ? EfUiRequestForgery.GetOrCreateRequestToken(request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory) : null;
         var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, view, canMutate, antiForgeryToken);
@@ -112,7 +115,8 @@ public static class EfUiApplicationBuilderExtensions
             return Results.NotFound();
         }
 
-        var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request, GetRenderableIssueMessages(discovery, entity));
+        var rowCache = new RequestRowCache();
+        var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request, rowCache, GetRenderableIssueMessages(discovery, entity));
         var canMutate = CanMutate(options, request.HttpContext.User);
         var antiForgeryToken = canMutate ? EfUiRequestForgery.GetOrCreateRequestToken(request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory) : null;
         return Results.Text(JsonSerializer.Serialize(RenderedListPayloadFactory.Create(options.RoutePrefix, metadata, view, canMutate, antiForgeryToken)), "application/json");
@@ -128,6 +132,7 @@ public static class EfUiApplicationBuilderExtensions
             return RenderMissingEntityResult(options.RoutePrefix, discovery, entity);
         }
 
+        var rowCache = new RequestRowCache();
         var antiForgeryToken = EfUiRequestForgery.GetOrCreateRequestToken(httpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory);
         var html = new HtmlPageRenderer().RenderEditForm(
             options.RoutePrefix,
@@ -136,7 +141,7 @@ public static class EfUiApplicationBuilderExtensions
             true,
             new Dictionary<string, string[]>(),
             null,
-            fieldOptions: BuildFieldOptions(dbContext, metadata, null, null, isCreate: true),
+            fieldOptions: BuildFieldOptions(dbContext, metadata, null, null, rowCache, isCreate: true),
             antiForgeryToken: antiForgeryToken);
         return Results.Content(html, HtmlContentType);
     }
@@ -165,6 +170,7 @@ public static class EfUiApplicationBuilderExtensions
 
         await LoadEditableCollectionsAsync(dbContext, metadata, model, isCreate: false);
 
+        var rowCache = new RequestRowCache();
         var antiForgeryToken = EfUiRequestForgery.GetOrCreateRequestToken(httpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory);
         var html = new HtmlPageRenderer().RenderEditForm(
             options.RoutePrefix,
@@ -173,7 +179,7 @@ public static class EfUiApplicationBuilderExtensions
             false,
             new Dictionary<string, string[]>(),
             key,
-            fieldOptions: BuildFieldOptions(dbContext, metadata, model, null, isCreate: false),
+            fieldOptions: BuildFieldOptions(dbContext, metadata, model, null, rowCache, isCreate: false),
             antiForgeryToken: antiForgeryToken);
         return Results.Content(html, HtmlContentType);
     }
@@ -188,6 +194,7 @@ public static class EfUiApplicationBuilderExtensions
             return RenderMissingEntityResult(options.RoutePrefix, discovery, entity);
         }
 
+        var rowCache = new RequestRowCache();
         var values = EnsureCollectionFieldsPresent(metadata, await ReadFormAsync(request), isCreate: true);
         if (!EfUiRequestForgery.ValidateRequest(values, request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory))
         {
@@ -198,7 +205,7 @@ public static class EfUiApplicationBuilderExtensions
 
         return result.IsSuccess
             ? Results.Redirect($"{options.RoutePrefix}/{entity}")
-            : CreateFailureResult(options.RoutePrefix, request.HttpContext, options.AntiforgeryKeyDirectory, dbContext, entity, result, null, isCreate: true, submittedValues: values);
+            : CreateFailureResult(options.RoutePrefix, request.HttpContext, options.AntiforgeryKeyDirectory, dbContext, entity, result, null, rowCache, isCreate: true, submittedValues: values);
     }
 
     private static async Task<IResult> UpdateEntityAsync(EfUiOptions options, string entity, string id, HttpRequest request, IServiceProvider services)
@@ -217,6 +224,7 @@ public static class EfUiApplicationBuilderExtensions
             return Results.NotFound();
         }
 
+        var rowCache = new RequestRowCache();
         var values = EnsureCollectionFieldsPresent(metadata, await ReadFormAsync(request), isCreate: false);
         if (!EfUiRequestForgery.ValidateRequest(values, request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory))
         {
@@ -227,7 +235,7 @@ public static class EfUiApplicationBuilderExtensions
 
         return result.IsSuccess
             ? Results.Redirect($"{options.RoutePrefix}/{entity}")
-            : CreateFailureResult(options.RoutePrefix, request.HttpContext, options.AntiforgeryKeyDirectory, dbContext, entity, result, key, isCreate: false, submittedValues: values);
+            : CreateFailureResult(options.RoutePrefix, request.HttpContext, options.AntiforgeryKeyDirectory, dbContext, entity, result, key, rowCache, isCreate: false, submittedValues: values);
     }
 
     private static async Task<IResult> DeleteEntityAsync(EfUiOptions options, string entity, string id, HttpRequest request, IServiceProvider services)
@@ -263,8 +271,9 @@ public static class EfUiApplicationBuilderExtensions
             return Results.BadRequest(result.Errors);
         }
 
-        var rows = ReadRows(dbContext, metadata.ClrType);
-        var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata);
+        var rowCache = new RequestRowCache();
+        var rows = rowCache.GetRows(dbContext, metadata.ClrType);
+        var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata, rowCache);
         var canMutate = CanMutate(options, request.HttpContext.User);
         var antiForgeryToken = canMutate ? EfUiRequestForgery.GetOrCreateRequestToken(request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory) : null;
         var html = new HtmlPageRenderer().RenderList(
@@ -318,7 +327,7 @@ public static class EfUiApplicationBuilderExtensions
         => CreateMetadataProvider().GetDiscoveryResult(dbContext);
 
     private static EntityMetadata? GetEntityMetadata(EntityDiscoveryResult discovery, string entity)
-        => discovery.Entities.SingleOrDefault(x => x.RouteName == entity);
+        => discovery.Entities.SingleOrDefault(x => string.Equals(x.RouteName, entity, StringComparison.OrdinalIgnoreCase));
 
     private static IReadOnlyList<string> GetRenderableIssueMessages(EntityDiscoveryResult discovery)
         => discovery.Issues
@@ -492,11 +501,29 @@ public static class EfUiApplicationBuilderExtensions
 
     private sealed record BoundTableQuery(TableQuery Query, IReadOnlyList<string> Errors);
 
-    private static RenderedListView BuildRenderedListView(string routePrefix, DbContext dbContext, EntityMetadata metadata, HttpRequest request, IReadOnlyList<string>? warnings = null)
+    private sealed class RequestRowCache
+    {
+        private readonly Dictionary<Type, IReadOnlyList<object>> _rows = new();
+
+        public IReadOnlyList<object> GetRows(DbContext dbContext, Type entityClrType)
+        {
+            if (!_rows.TryGetValue(entityClrType, out var rows))
+            {
+                rows = ReadRows(dbContext, entityClrType);
+                _rows[entityClrType] = rows;
+            }
+
+            return rows;
+        }
+    }
+
+    private static readonly ConcurrentDictionary<Type, Func<DbContext, IReadOnlyList<object>>> ReadRowsAccessors = new();
+
+    private static RenderedListView BuildRenderedListView(string routePrefix, DbContext dbContext, EntityMetadata metadata, HttpRequest request, RequestRowCache rowCache, IReadOnlyList<string>? warnings = null)
     {
         var queryResult = BindTableQuery(request, metadata);
-        var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata);
-        var rows = ApplyTableQuery(ReadRows(dbContext, metadata.ClrType), metadata, queryResult.Query, relatedValueLookups);
+        var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata, rowCache);
+        var rows = ApplyTableQuery(rowCache.GetRows(dbContext, metadata.ClrType), metadata, queryResult.Query, relatedValueLookups);
         return new RenderedListView(
             CreateRenderedListRows(routePrefix, metadata, rows, relatedValueLookups),
             queryResult.Query.Filters.Select(filter => new RenderedListFilter(filter.Field, filter.Operator, filter.Value)).ToList(),
@@ -508,15 +535,19 @@ public static class EfUiApplicationBuilderExtensions
     }
 
     private static IReadOnlyList<object> ReadRows(DbContext dbContext, Type entityClrType)
-    {
-        var setMethod = typeof(DbContext).GetMethods()
-            .Single(method => method.Name == nameof(DbContext.Set)
-                              && method.IsGenericMethodDefinition
-                              && method.GetParameters().Length == 0);
+        => ReadRowsAccessors.GetOrAdd(entityClrType, CreateReadRowsAccessor)(dbContext);
 
-        var queryable = (System.Collections.IEnumerable)setMethod.MakeGenericMethod(entityClrType).Invoke(dbContext, null)!;
-        return queryable.Cast<object>().ToList();
+    private static Func<DbContext, IReadOnlyList<object>> CreateReadRowsAccessor(Type entityClrType)
+    {
+        var method = typeof(EfUiApplicationBuilderExtensions).GetMethod(nameof(ReadRowsCore), BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("Could not resolve the row reader method.");
+
+        return (Func<DbContext, IReadOnlyList<object>>)method.MakeGenericMethod(entityClrType).CreateDelegate(typeof(Func<DbContext, IReadOnlyList<object>>));
     }
+
+    private static IReadOnlyList<object> ReadRowsCore<TEntity>(DbContext dbContext)
+        where TEntity : class
+        => dbContext.Set<TEntity>().Cast<object>().ToList();
 
     private static IReadOnlyList<RenderedListRow> CreateRenderedListRows(string routePrefix, EntityMetadata metadata, IReadOnlyList<object> rows, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
     {
@@ -527,7 +558,7 @@ public static class EfUiApplicationBuilderExtensions
                 property => CreateRenderedListCell(routePrefix, row, property, relatedValueLookups)))).ToList();
     }
 
-    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> BuildRelatedValueLookups(DbContext dbContext, EntityMetadata metadata)
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> BuildRelatedValueLookups(DbContext dbContext, EntityMetadata metadata, RequestRowCache rowCache)
     {
         var entityType = dbContext.Model.FindEntityType(metadata.ClrType);
         if (entityType is null)
@@ -555,7 +586,7 @@ public static class EfUiApplicationBuilderExtensions
             }
 
             var relatedProperty = metadata.AllProperties.Single(property => property.Name == foreignKeyProperty.Name);
-            lookups[foreignKeyProperty.Name] = ReadRows(dbContext, foreignKey.PrincipalEntityType.ClrType)
+            lookups[foreignKeyProperty.Name] = rowCache.GetRows(dbContext, foreignKey.PrincipalEntityType.ClrType)
                 .ToDictionary(
                     row => FormatValue(row.GetType().GetProperty(relatedPrimaryKey.Name)?.GetValue(row)),
                     row => GetRelatedEntityLabel(row, relatedPrimaryKey.Name, relatedProperty.RelatedDisplayPropertyName),
@@ -662,7 +693,7 @@ public static class EfUiApplicationBuilderExtensions
         return bindResult.IsSuccess ? bindResult.Value : null;
     }
 
-    private static IResult CreateFailureResult(string routePrefix, HttpContext httpContext, string? antiforgeryKeyDirectory, DbContext dbContext, string entity, CrudOperationResult result, object? key, bool isCreate, IReadOnlyDictionary<string, string[]> submittedValues)
+    private static IResult CreateFailureResult(string routePrefix, HttpContext httpContext, string? antiforgeryKeyDirectory, DbContext dbContext, string entity, CrudOperationResult result, object? key, RequestRowCache rowCache, bool isCreate, IReadOnlyDictionary<string, string[]> submittedValues)
     {
         if (result.Errors.ContainsKey("entity") || result.Errors.ContainsKey("id"))
         {
@@ -691,20 +722,19 @@ public static class EfUiApplicationBuilderExtensions
             result.Errors,
             key,
             submittedValues,
-            BuildFieldOptions(dbContext, metadata, model, submittedValues, isCreate),
+            BuildFieldOptions(dbContext, metadata, model, submittedValues, rowCache, isCreate),
             antiForgeryToken: antiForgeryToken);
         return Results.Content(html, HtmlContentType, statusCode: StatusCodes.Status400BadRequest);
     }
 
-    private static IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>> BuildFieldOptions(DbContext dbContext, EntityMetadata metadata, object? model, IReadOnlyDictionary<string, string[]>? submittedValues, bool isCreate)
+    private static IReadOnlyDictionary<string, IReadOnlyList<RelatedEntityOption>> BuildFieldOptions(DbContext dbContext, EntityMetadata metadata, object? model, IReadOnlyDictionary<string, string[]>? submittedValues, RequestRowCache rowCache, bool isCreate)
     {
         var options = new Dictionary<string, IReadOnlyList<RelatedEntityOption>>(StringComparer.OrdinalIgnoreCase);
         var fields = isCreate ? metadata.CreateEditableFields : metadata.UpdateEditableFields;
-        var relatedRowsCache = new Dictionary<Type, IReadOnlyList<object>>();
         var oneToManyFields = fields.Where(field => field.Kind == EditableFieldKind.Collection && field.CollectionRelationshipKind == CollectionRelationshipKind.OneToMany && field.RelatedClrType is not null).ToList();
         var ownerLabels = oneToManyFields.Count == 0
             ? null
-            : ReadRows(dbContext, metadata.ClrType)
+            : rowCache.GetRows(dbContext, metadata.ClrType)
                 .ToDictionary(
                     row => FormatValue(row.GetType().GetProperty(metadata.PrimaryKeyProperty.Name)?.GetValue(row)),
                     row => GetRelatedEntityLabel(row, metadata.PrimaryKeyProperty.Name),
@@ -718,7 +748,7 @@ public static class EfUiApplicationBuilderExtensions
             }
 
             var selectedValues = GetSelectedValues(dbContext, field, model, submittedValues);
-            var relatedRows = GetRelatedRows(dbContext, field.RelatedClrType, relatedRowsCache);
+            var relatedRows = GetRelatedRows(dbContext, field.RelatedClrType, rowCache);
             options[field.Name] = relatedRows
                 .Select(row => CreateRelatedEntityOption(dbContext, metadata, field, row, selectedValues, model, ownerLabels))
                 .ToList();
@@ -727,16 +757,8 @@ public static class EfUiApplicationBuilderExtensions
         return options;
     }
 
-    private static IReadOnlyList<object> GetRelatedRows(DbContext dbContext, Type relatedClrType, Dictionary<Type, IReadOnlyList<object>> relatedRowsCache)
-    {
-        if (!relatedRowsCache.TryGetValue(relatedClrType, out var relatedRows))
-        {
-            relatedRows = ReadRows(dbContext, relatedClrType);
-            relatedRowsCache[relatedClrType] = relatedRows;
-        }
-
-        return relatedRows;
-    }
+    private static IReadOnlyList<object> GetRelatedRows(DbContext dbContext, Type relatedClrType, RequestRowCache rowCache)
+        => rowCache.GetRows(dbContext, relatedClrType);
 
     private static RelatedEntityOption CreateRelatedEntityOption(DbContext dbContext, EntityMetadata metadata, EditableFieldMetadata field, object row, HashSet<string> selectedValues, object? model, IReadOnlyDictionary<string, string>? ownerLabels)
     {

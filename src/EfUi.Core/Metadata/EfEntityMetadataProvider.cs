@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -6,16 +7,32 @@ namespace EfUi.Core.Metadata;
 
 public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
 {
+    private static readonly ConditionalWeakTable<IModel, EntityDiscoveryResult> DiscoveryCache = new();
+
     public EntityDiscoveryResult GetDiscoveryResult(DbContext dbContext)
+        => DiscoveryCache.GetValue(dbContext.Model, static model => BuildDiscoveryResult(model));
+
+    public IReadOnlyList<EntityMetadata> GetEntities(DbContext dbContext)
+        => GetDiscoveryResult(dbContext).Entities;
+
+    public EntityMetadata GetEntity(DbContext dbContext, string routeName)
+        => GetEntities(dbContext).Single(entity => string.Equals(entity.RouteName, routeName, StringComparison.OrdinalIgnoreCase));
+
+    private static EntityDiscoveryResult BuildDiscoveryResult(IModel model)
     {
         var issues = new List<EntityDiscoveryIssue>();
+        var entityTypes = model.GetEntityTypes()
+            .Where(entityType => entityType.ClrType.IsClass)
+            .Where(entityType => !IsSharedJoinEntity(entityType))
+            .OrderBy(entityType => GetRouteName(entityType), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(entityType => entityType.ClrType.FullName ?? entityType.ClrType.Name, StringComparer.Ordinal)
+            .ToList();
+        var routeNames = AllocateRouteNames(entityTypes);
         var entities = new List<EntityMetadata>();
 
-        foreach (var entityType in dbContext.Model.GetEntityTypes()
-            .Where(entityType => entityType.ClrType.IsClass)
-            .Where(entityType => !IsSharedJoinEntity(entityType)))
+        foreach (var entityType in entityTypes)
         {
-            var entity = Build(entityType, issues);
+            var entity = Build(entityType, routeNames, issues);
             if (entity is not null)
             {
                 entities.Add(entity);
@@ -27,22 +44,65 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             issues);
     }
 
-    public IReadOnlyList<EntityMetadata> GetEntities(DbContext dbContext)
-        => GetDiscoveryResult(dbContext).Entities;
-
-    public EntityMetadata GetEntity(DbContext dbContext, string routeName)
-        => GetEntities(dbContext).Single(entity => entity.RouteName == routeName);
-
-    private static EntityMetadata? Build(IEntityType entityType, List<EntityDiscoveryIssue> issues)
+    private static IReadOnlyDictionary<IEntityType, string> AllocateRouteNames(IReadOnlyList<IEntityType> entityTypes)
     {
-        var routeName = GetRouteName(entityType);
+        var routeNames = new Dictionary<IEntityType, string>(ReferenceEqualityComparer.Instance);
+        var usedRouteNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in entityTypes.GroupBy(GetRouteName, StringComparer.OrdinalIgnoreCase))
+        {
+            var groupEntities = group.OrderBy(entityType => entityType.ClrType.FullName ?? entityType.ClrType.Name, StringComparer.Ordinal).ToList();
+            if (groupEntities.Count == 1)
+            {
+                AssignRouteName(routeNames, usedRouteNames, groupEntities[0], group.Key);
+                continue;
+            }
+
+            var plainEntities = groupEntities.Where(entityType => string.IsNullOrWhiteSpace(entityType.GetSchema())).ToList();
+            var schemaEntities = groupEntities.Where(entityType => !string.IsNullOrWhiteSpace(entityType.GetSchema())).ToList();
+
+            if (plainEntities.Count > 0)
+            {
+                AssignRouteName(routeNames, usedRouteNames, plainEntities[0], group.Key);
+
+                foreach (var entityType in plainEntities.Skip(1))
+                {
+                    AssignRouteName(routeNames, usedRouteNames, entityType, BuildIdentityRouteName(group.Key, entityType));
+                }
+            }
+
+            foreach (var entityType in schemaEntities)
+            {
+                AssignRouteName(routeNames, usedRouteNames, entityType, BuildSchemaRouteName(entityType));
+            }
+        }
+
+        return routeNames;
+    }
+
+    private static void AssignRouteName(Dictionary<IEntityType, string> routeNames, ISet<string> usedRouteNames, IEntityType entityType, string candidateRouteName)
+    {
+        var uniqueRouteName = candidateRouteName;
+        var collisionIndex = 2;
+
+        while (!usedRouteNames.Add(uniqueRouteName))
+        {
+            uniqueRouteName = $"{candidateRouteName}-{collisionIndex++}";
+        }
+
+        routeNames[entityType] = uniqueRouteName;
+    }
+
+    private static EntityMetadata? Build(IEntityType entityType, IReadOnlyDictionary<IEntityType, string> routeNames, List<EntityDiscoveryIssue> issues)
+    {
+        var routeName = routeNames[entityType];
         if (!TryGetPrimaryKeyProperty(entityType, routeName, issues, out var keyProperty))
         {
             return null;
         }
 
         var scalarProperties = BuildScalarProperties(entityType, keyProperty);
-        var referenceFields = BuildReferenceFields(entityType, routeName, scalarProperties, issues, out var relatedPropertyMap);
+        var referenceFields = BuildReferenceFields(entityType, routeName, routeNames, scalarProperties, issues, out var relatedPropertyMap);
         scalarProperties = ApplyRelatedPropertyMap(scalarProperties, relatedPropertyMap);
 
         var suppressedScalarPropertyNames = referenceFields
@@ -50,7 +110,7 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             .ToHashSet(StringComparer.Ordinal);
 
         var collectionFields = BuildManyToManyCollectionFields(entityType, routeName, issues);
-        var (oneToManyFields, relatedManagementLinks) = BuildOneToManyFields(entityType);
+        var (oneToManyFields, relatedManagementLinks) = BuildOneToManyFields(entityType, routeNames);
 
         var primaryKeyMetadata = scalarProperties.Single(property => property.IsPrimaryKey);
         var editableProperties = scalarProperties.Where(property => property.IsEditableOnUpdate).ToList();
@@ -100,7 +160,7 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 property.Name == keyProperty.Name))
             .ToList();
 
-    private static List<ReferenceFieldMetadata> BuildReferenceFields(IEntityType entityType, string routeName, IReadOnlyList<EntityPropertyMetadata> scalarProperties, List<EntityDiscoveryIssue> issues, out Dictionary<string, EntityPropertyMetadata> relatedPropertyMap)
+    private static List<ReferenceFieldMetadata> BuildReferenceFields(IEntityType entityType, string routeName, IReadOnlyDictionary<IEntityType, string> routeNames, IReadOnlyList<EntityPropertyMetadata> scalarProperties, List<EntityDiscoveryIssue> issues, out Dictionary<string, EntityPropertyMetadata> relatedPropertyMap)
     {
         var referenceFields = new List<ReferenceFieldMetadata>();
         relatedPropertyMap = new Dictionary<string, EntityPropertyMetadata>(StringComparer.Ordinal);
@@ -127,7 +187,7 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
                 continue;
             }
 
-            var relatedRouteName = GetRouteName(foreignKey.PrincipalEntityType);
+            var relatedRouteName = routeNames[foreignKey.PrincipalEntityType];
             var relatedDisplayPropertyName = ResolveRelatedDisplayPropertyName(foreignKey)
                 ?? ResolveRelatedDisplayPropertyName(foreignKey.PrincipalEntityType);
 
@@ -207,7 +267,7 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
         return collectionFields;
     }
 
-    private static (List<EditableFieldMetadata> OneToManyFields, List<RelatedEntityManagementLink> RelatedManagementLinks) BuildOneToManyFields(IEntityType entityType)
+    private static (List<EditableFieldMetadata> OneToManyFields, List<RelatedEntityManagementLink> RelatedManagementLinks) BuildOneToManyFields(IEntityType entityType, IReadOnlyDictionary<IEntityType, string> routeNames)
     {
         var oneToManyFields = new List<EditableFieldMetadata>();
         var relatedManagementLinks = new List<RelatedEntityManagementLink>();
@@ -224,7 +284,7 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
             {
                 relatedManagementLinks.Add(new RelatedEntityManagementLink(
                     navigation.Name,
-                    GetRouteName(navigation.TargetEntityType),
+                    routeNames[navigation.TargetEntityType],
                     navigation.TargetEntityType.ClrType,
                     classification.ForeignKey!.Properties[0].Name));
                 continue;
@@ -353,7 +413,41 @@ public sealed class EfEntityMetadataProvider : IEntityMetadataProvider
     private static string GetRouteName(IEntityType entityType)
     {
         var tableName = entityType.GetTableName();
-        return (tableName ?? entityType.ClrType.Name).ToLowerInvariant();
+        return string.IsNullOrWhiteSpace(tableName)
+            ? entityType.ClrType.Name.ToLowerInvariant()
+            : tableName.ToLowerInvariant();
+    }
+
+    private static string BuildSchemaRouteName(IEntityType entityType)
+    {
+        var schema = entityType.GetSchema();
+        var tableName = entityType.GetTableName();
+        if (string.IsNullOrWhiteSpace(schema) || string.IsNullOrWhiteSpace(tableName))
+        {
+            return BuildIdentityRouteName(GetRouteName(entityType), entityType);
+        }
+
+        return $"{schema}_{tableName}".ToLowerInvariant();
+    }
+
+    private static string BuildIdentityRouteName(string baseRouteName, IEntityType entityType)
+        => $"{baseRouteName}-{GetRouteIdentitySuffix(entityType)}";
+
+    private static string GetRouteIdentitySuffix(IEntityType entityType)
+        => NormalizeRouteComponent(entityType.ClrType.FullName ?? entityType.ClrType.Name);
+
+    private static string NormalizeRouteComponent(string value)
+    {
+        var builder = new System.Text.StringBuilder(value.Length);
+        foreach (var character in value)
+        {
+            builder.Append(char.IsLetterOrDigit(character) ? char.ToLowerInvariant(character) : '_');
+        }
+
+        var normalized = builder.ToString().Trim('_');
+        return string.IsNullOrWhiteSpace(normalized)
+            ? "entity"
+            : normalized;
     }
 
     private static bool IsEditableOnCreate(IProperty property)
