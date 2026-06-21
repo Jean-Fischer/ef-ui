@@ -12,20 +12,26 @@ dotnet add package EfUi.AspNetCore
 
 ## Quick start
 
-> [!IMPORTANT]
-> After `var app = builder.Build();`, add this block to `Program.cs`:
-
 ```csharp
+using EfUi.AspNetCore;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDbContext<MyDbContext>(...);
+
+var app = builder.Build();
+
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃ Required EF UI setup block — add this part only ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 app.UseEfUi(options =>
 {
     options.DbContextType = typeof(MyDbContext);
     options.RoutePrefix = "/admin";
 });
+
+app.Run();
 ```
-
-`MyDbContext` must already be registered in dependency injection.
-
-Add `using EfUi.AspNetCore;` if your `Program.cs` does not already have it.
 
 ## Common options
 
