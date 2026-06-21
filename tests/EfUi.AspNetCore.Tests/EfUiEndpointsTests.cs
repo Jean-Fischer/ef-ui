@@ -31,7 +31,8 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         _factory = factory;
         _client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
-            AllowAutoRedirect = false
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
         });
     }
 
@@ -672,7 +673,8 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         using var noCookieClient = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false,
-            HandleCookies = false
+            HandleCookies = false,
+            BaseAddress = new Uri("https://localhost")
         });
 
         var response = await noCookieClient.PostAsync("/simple/users", new FormUrlEncodedContent(new Dictionary<string, string>
@@ -846,6 +848,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         await app.StartAsync();
 
         var client = app.GetTestClient();
+        client.BaseAddress = new Uri("https://localhost");
         var html = await client.GetStringAsync("/orders/orders/new");
 
         html.Should().Contain("<select class=\"efui-select\" name=\"BillingCustomer\">");
@@ -896,6 +899,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         await app.StartAsync();
 
         var client = app.GetTestClient();
+        client.BaseAddress = new Uri("https://localhost");
         var html = await client.GetStringAsync("/orders/orders");
 
         html.Should().Contain("Acme");

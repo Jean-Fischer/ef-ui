@@ -96,7 +96,8 @@ public sealed class EfUiProductionTests
     private static HttpClient CreateClient(WebApplicationFactory<Program> factory)
         => factory.CreateClient(new WebApplicationFactoryClientOptions
         {
-            AllowAutoRedirect = false
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
         });
 
     private static async Task AuthenticateAsync(HttpClient client, string role)

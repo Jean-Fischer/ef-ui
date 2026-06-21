@@ -155,7 +155,9 @@ public sealed class EscapedStringKeyRoutingTests
             });
 
             await app.StartAsync();
-            return new StringKeyEfUiTestHost(connection, app, app.GetTestClient());
+            var client = app.GetTestClient();
+            client.BaseAddress = new Uri("https://localhost");
+            return new StringKeyEfUiTestHost(connection, app, client);
         }
 
         public async ValueTask DisposeAsync()

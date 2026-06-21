@@ -85,7 +85,8 @@ internal static class EfUiRequestForgery
             IsEssential = true,
             Path = normalizedRoutePrefix,
             SameSite = SameSiteMode.Strict,
-            Secure = httpContext.Request.IsHttps
+            // Antiforgery cookies must not travel over plain HTTP.
+            Secure = true
         });
 
         return cookieSecret;
