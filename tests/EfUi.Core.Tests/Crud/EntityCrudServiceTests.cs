@@ -40,6 +40,25 @@ public class EntityCrudServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_accepts_route_names_case_insensitively()
+    {
+        await using var db = await CreateDbAsync();
+        var sut = new EntityCrudService(new EfEntityMetadataProvider(), new ScalarValueBinder());
+
+        var result = await sut.CreateAsync(db, "USERS", new Dictionary<string, string?>
+        {
+            ["Name"] = "Case Insensitive",
+            ["Email"] = "case-insensitive@example.com",
+            ["IsActive"] = "true",
+            ["CreatedAt"] = "2026-05-17T10:00:00",
+            ["Group"] = "1"
+        });
+
+        result.IsSuccess.Should().BeTrue();
+        (await db.Users.SingleAsync()).Name.Should().Be("Case Insensitive");
+    }
+
+    [Fact]
     public async Task UpdateAsync_changes_only_writable_fields()
     {
         await using var db = await CreateDbAsync();

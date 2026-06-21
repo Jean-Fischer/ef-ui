@@ -71,7 +71,8 @@ public sealed class ChinookEndpointsTests : IClassFixture<EfUiApplicationFactory
     private HttpClient CreateClient()
         => _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
-            AllowAutoRedirect = false
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
         });
 
     private static async Task AuthenticateAsync(HttpClient client, string role)

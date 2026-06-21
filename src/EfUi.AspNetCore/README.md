@@ -72,7 +72,9 @@ If no attribute is present, EF UI falls back to `Name`, `Title`, `Email`, then t
 - The package exposes the `UseEfUi` ASP.NET Core extension method.
 - The UI is designed for existing ASP.NET Core apps with a registered EF Core `DbContext`.
 - The enhanced list shell self-hosts its Tabulator assets instead of fetching them from a CDN.
-- Write forms and delete actions include hidden antiforgery tokens by default.
+- Write forms and delete actions include hidden antiforgery tokens by default, and those tokens are paired with a route-scoped cookie.
+- The antiforgery cookie is marked `Secure`, so write actions should be exercised over HTTPS.
+- Entity routes stay table-driven; schema-qualified table names are prefixed with the schema when needed to keep routes unique.
 - When authorization is enabled, browsing routes accept `ReadOnly` or `Edit`, while create, update, and delete routes require `Edit`.
 
 ## Current limitations
