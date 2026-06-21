@@ -21,6 +21,9 @@ builder.Services.AddDbContext<MyDbContext>(...);
 
 var app = builder.Build();
 
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃ Required EF UI setup block — add this part only ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 app.UseEfUi(options =>
 {
     options.DbContextType = typeof(MyDbContext);
