@@ -6,9 +6,16 @@ public sealed class SampleModelDbContext(DbContextOptions<SampleModelDbContext> 
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<Group> Groups => Set<Group>();
+    public DbSet<ProviderRecord> ProviderRecords => Set<ProviderRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<ProviderRecord>(builder =>
+        {
+            builder.ToTable("provider_records");
+            builder.HasKey(x => x.Id);
+        });
+
         modelBuilder.Entity<User>(builder =>
         {
             builder.HasKey(x => x.Id);
@@ -30,6 +37,23 @@ public sealed class User
     public DateTime CreatedAt { get; set; }
     public int? GroupId { get; set; }
     public Group? Group { get; set; }
+}
+
+public enum ProviderRole
+{
+    Viewer,
+    Editor
+}
+
+public sealed class ProviderRecord
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int? NullableNumber { get; set; }
+    public bool IsActive { get; set; }
+    public ProviderRole Role { get; set; }
+    public Guid ExternalId { get; set; }
+    public DateTime CreatedAt { get; set; }
 }
 
 public sealed class Group
