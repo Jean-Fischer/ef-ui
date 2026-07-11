@@ -10,16 +10,16 @@ public sealed record EntityListQueryResult
         IReadOnlyList<TableSortClause>? appliedSorts = null,
         IReadOnlyList<EntityListQueryError>? errors = null,
         IReadOnlyList<string>? warnings = null,
-        int Offset = 0,
-        int Limit = 50)
+        int offset = 0,
+        int limit = 50)
     {
         Rows = rows;
         AppliedFilters = appliedFilters ?? [];
         AppliedSorts = appliedSorts ?? [];
         Errors = errors ?? [];
         Warnings = warnings ?? [];
-        this.Offset = Offset;
-        this.Limit = Limit;
+        Offset = offset;
+        Limit = limit;
     }
 
     public IReadOnlyList<EntityListQueryRow> Rows { get; init; }

@@ -23,8 +23,8 @@ public class EntityListQueryResultTests
             [new TableSortClause("Author", "asc")],
             [new EntityListQueryError("invalid-filter", "The filter is invalid.", "Author")],
             ["Some related values could not be loaded."],
-            Offset: 20,
-            Limit: 10);
+            offset: 20,
+            limit: 10);
 
         result.Rows.Should().ContainSingle().Which.Should().Be(row);
         result.Rows[0].Key.Should().Be("7");
