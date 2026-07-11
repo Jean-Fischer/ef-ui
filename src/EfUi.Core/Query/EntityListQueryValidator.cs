@@ -6,13 +6,19 @@ using Microsoft.EntityFrameworkCore.Metadata;
 namespace EfUi.Core.Query;
 
 /// <summary>Validates a table query against the capabilities exposed by an EF model.</summary>
-public sealed class EntityListQueryValidator
+internal sealed class EntityListQueryValidator
 {
     public EntityListQueryValidationResult Validate(
         DbContext dbContext,
         EntityMetadata metadata,
         TableQuery query)
-        => Validate(dbContext.Model, metadata, query);
+    {
+        ArgumentNullException.ThrowIfNull(dbContext);
+        ArgumentNullException.ThrowIfNull(metadata);
+        ArgumentNullException.ThrowIfNull(query);
+
+        return Validate(dbContext.Model, metadata, query);
+    }
 
     public EntityListQueryValidationResult Validate(
         IModel model,
@@ -140,13 +146,17 @@ public sealed class EntityListQueryValidator
     }
 }
 
-public sealed class EntityListQueryValidationResult
+internal sealed class EntityListQueryValidationResult
 {
     public EntityListQueryValidationResult(
         IReadOnlyList<TableFilterClause> appliedFilters,
         IReadOnlyList<TableSortClause> appliedSorts,
         IReadOnlyList<EntityListQueryError> errors)
     {
+        ArgumentNullException.ThrowIfNull(appliedFilters);
+        ArgumentNullException.ThrowIfNull(appliedSorts);
+        ArgumentNullException.ThrowIfNull(errors);
+
         AppliedFilters = appliedFilters;
         AppliedSorts = appliedSorts;
         Errors = errors;

@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 namespace EfUi.Core.Query;
 
 /// <summary>Describes the provider-queryable capabilities of the fields rendered for an entity.</summary>
-public sealed class EntityListQueryCapabilities
+internal sealed class EntityListQueryCapabilities
 {
     private EntityListQueryCapabilities(IReadOnlyDictionary<string, EntityListQueryFieldCapabilities> fields)
     {
@@ -15,17 +15,25 @@ public sealed class EntityListQueryCapabilities
     public IReadOnlyDictionary<string, EntityListQueryFieldCapabilities> Fields { get; }
 
     public static EntityListQueryCapabilities Create(DbContext dbContext, EntityMetadata metadata)
-        => Create(dbContext.Model, metadata);
+    {
+        ArgumentNullException.ThrowIfNull(dbContext);
+        ArgumentNullException.ThrowIfNull(metadata);
+
+        return Create(dbContext.Model, metadata);
+    }
 
     public static EntityListQueryCapabilities Create(IModel model, EntityMetadata metadata)
     {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(metadata);
+
         var entityType = model.FindEntityType(metadata.ClrType);
         var fields = new Dictionary<string, EntityListQueryFieldCapabilities>(StringComparer.Ordinal);
 
         foreach (var property in metadata.AllProperties)
         {
             var mappedProperty = entityType?.FindProperty(property.Name);
-            var relatedDisplayProperty = FindRelatedDisplayProperty(model, property, entityType);
+            var relatedDisplayProperty = FindRelatedDisplayProperty(property, entityType);
             var isDisplayOnly = property.RelatedDisplayPropertyName is not null
                 && relatedDisplayProperty is null;
             var effectiveType = relatedDisplayProperty?.ClrType ?? mappedProperty?.ClrType ?? property.ClrType;
@@ -44,7 +52,7 @@ public sealed class EntityListQueryCapabilities
         return new EntityListQueryCapabilities(fields);
     }
 
-    private static IProperty? FindRelatedDisplayProperty(IModel model, EntityPropertyMetadata property, IEntityType? dependentEntityType)
+    private static IProperty? FindRelatedDisplayProperty(EntityPropertyMetadata property, IEntityType? dependentEntityType)
     {
         if (property.RelatedDisplayPropertyName is null || dependentEntityType is null)
         {
@@ -75,7 +83,7 @@ public sealed class EntityListQueryCapabilities
     }
 }
 
-public sealed record EntityListQueryFieldCapabilities(
+internal sealed record EntityListQueryFieldCapabilities(
     string Name,
     Type ClrType,
     bool IsFilterable,

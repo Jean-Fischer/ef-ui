@@ -10,6 +10,44 @@ namespace EfUi.Core.Tests.Query;
 public sealed class EntityListQueryValidatorTests
 {
     [Fact]
+    public void Query_validator_implementation_types_are_not_public_package_api()
+    {
+        typeof(EntityListQueryCapabilities).IsPublic.Should().BeFalse();
+        typeof(EntityListQueryFieldCapabilities).IsPublic.Should().BeFalse();
+        typeof(EntityListQueryValidator).IsPublic.Should().BeFalse();
+        typeof(EntityListQueryValidationResult).IsPublic.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Capability_and_validator_entry_points_guard_null_arguments()
+    {
+        using var db = CreateDb();
+        var metadata = new EfEntityMetadataProvider().GetEntity(db, "orders");
+        var query = new TableQuery([], []);
+        var validator = new EntityListQueryValidator();
+
+        FluentActions.Invoking(() => EntityListQueryCapabilities.Create((DbContext)null!, metadata))
+            .Should().Throw<ArgumentNullException>().Which.ParamName.Should().Be("dbContext");
+        FluentActions.Invoking(() => EntityListQueryCapabilities.Create((Microsoft.EntityFrameworkCore.Metadata.IModel)null!, metadata))
+            .Should().Throw<ArgumentNullException>().Which.ParamName.Should().Be("model");
+        FluentActions.Invoking(() => validator.Validate((DbContext)null!, metadata, query))
+            .Should().Throw<ArgumentNullException>().Which.ParamName.Should().Be("dbContext");
+        FluentActions.Invoking(() => validator.Validate((Microsoft.EntityFrameworkCore.Metadata.IModel)null!, metadata, query))
+            .Should().Throw<ArgumentNullException>().Which.ParamName.Should().Be("model");
+    }
+
+    [Fact]
+    public void Validation_result_guards_null_collections()
+    {
+        FluentActions.Invoking(() => new EntityListQueryValidationResult(null!, [], []))
+            .Should().Throw<ArgumentNullException>().Which.ParamName.Should().Be("appliedFilters");
+        FluentActions.Invoking(() => new EntityListQueryValidationResult([], null!, []))
+            .Should().Throw<ArgumentNullException>().Which.ParamName.Should().Be("appliedSorts");
+        FluentActions.Invoking(() => new EntityListQueryValidationResult([], [], null!))
+            .Should().Throw<ArgumentNullException>().Which.ParamName.Should().Be("errors");
+    }
+
+    [Fact]
     public void Visible_scalar_properties_are_queryable_and_eq_is_available_for_typed_values()
     {
         using var db = CreateDb();
@@ -52,6 +90,23 @@ public sealed class EntityListQueryValidatorTests
     }
 
     [Fact]
+    public void IModel_overloads_validate_a_valid_mapped_fk_display_filter_and_sort()
+    {
+        using var db = CreateDb();
+        var metadata = new EfEntityMetadataProvider().GetEntity(db, "orders");
+        var query = new TableQuery([new("CustomerId", "contains", "book")], [new("CustomerId", "asc")]);
+
+        var capabilities = EntityListQueryCapabilities.Create(db.Model, metadata);
+        var result = new EntityListQueryValidator().Validate(db.Model, metadata, query);
+
+        capabilities.Fields["CustomerId"].IsFilterable.Should().BeTrue();
+        capabilities.Fields["CustomerId"].IsSortable.Should().BeTrue();
+        result.AppliedFilters.Should().Equal(query.Filters);
+        result.AppliedSorts.Should().Equal(query.Sorts);
+        result.Errors.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Unsupported_operators_produce_structured_errors()
     {
         using var db = CreateDb();
@@ -86,7 +141,10 @@ public sealed class EntityListQueryValidatorTests
 
         result.AppliedFilters.Should().BeEmpty();
         result.AppliedSorts.Should().BeEmpty();
-        result.Errors.Should().Contain(error => error.Code == "field-display-only" && error.Field == "CustomerId");
+        result.Errors.Should().HaveCount(2);
+        result.Errors.Should().Equal(
+            new EntityListQueryError("field-display-only", "Field 'CustomerId' is display-only and cannot be filtered by the provider.", "CustomerId"),
+            new EntityListQueryError("field-display-only", "Field 'CustomerId' is display-only and cannot be sorted by the provider.", "CustomerId"));
     }
 
     [Fact]
