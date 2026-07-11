@@ -359,147 +359,52 @@ public static class EfUiApplicationBuilderExtensions
             : Results.NotFound();
     }
 
-    private static BoundTableQuery BindTableQuery(HttpRequest request, EntityMetadata metadata)
+    private static TableQueryRequestParseResult PrepareTableQuery(HttpRequest request, EntityMetadata metadata)
     {
+        var parsed = TableQueryRequestParser.Parse(request);
         var fields = metadata.AllProperties
             .Select(property => new TableQueryField(property.Name, IsFilterable: true, IsSortable: true))
             .ToDictionary(field => field.Name, StringComparer.Ordinal);
-        var errors = new List<string>();
-        var filters = ParseFilterClauses(request.Query, fields, errors).ToList();
-        var sorts = ParseSortClauses(request.Query, fields, errors).ToList();
+        var errors = parsed.Errors.ToList();
+        var filters = parsed.Query.Filters
+            .Where(filter => ValidateFilter(filter, fields, errors))
+            .ToList();
+        var sorts = parsed.Query.Sorts
+            .Where(sort => ValidateSort(sort, fields, errors))
+            .ToList();
 
-        return new BoundTableQuery(
-            new TableQuery(filters, sorts, ReadNonNegativeInt(request, "offset", 0, errors), ReadPositiveInt(request, "limit", 50, errors)),
+        return new TableQueryRequestParseResult(
+            new TableQuery(filters, sorts, parsed.Query.Offset, parsed.Query.Limit),
             errors);
     }
 
-    private static IEnumerable<TableFilterClause> ParseFilterClauses(IQueryCollection query, IReadOnlyDictionary<string, TableQueryField> fields, ICollection<string> errors)
+    private static bool ValidateFilter(TableFilterClause filter, IReadOnlyDictionary<string, TableQueryField> fields, ICollection<string> errors)
     {
-        foreach (var index in GetClauseIndexes(query, "filter"))
+        if (string.IsNullOrWhiteSpace(filter.Field) || !fields.TryGetValue(filter.Field, out var fieldDefinition) || !fieldDefinition.IsFilterable)
         {
-            if (TryParseFilterClause(query, index, fields, errors, out var filter))
-            {
-                yield return filter;
-            }
-        }
-    }
-
-    private static bool TryParseFilterClause(IQueryCollection query, int index, IReadOnlyDictionary<string, TableQueryField> fields, ICollection<string> errors, out TableFilterClause filter)
-    {
-        var field = query[$"filter.{index}.field"].FirstOrDefault();
-        var op = query[$"filter.{index}.op"].FirstOrDefault();
-        var value = query[$"filter.{index}.value"].FirstOrDefault();
-
-        if (string.IsNullOrWhiteSpace(field) && string.IsNullOrWhiteSpace(op) && string.IsNullOrWhiteSpace(value))
-        {
-            filter = default!;
+            errors.Add($"Unsupported filter field '{filter.Field}'.");
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(field) || !fields.TryGetValue(field, out var fieldDefinition) || !fieldDefinition.IsFilterable)
+        if (string.IsNullOrWhiteSpace(filter.Operator) || !fieldDefinition.SupportedOperators.Contains(filter.Operator, StringComparer.OrdinalIgnoreCase))
         {
-            errors.Add($"Unsupported filter field '{field}'.");
-            filter = default!;
+            errors.Add($"Unsupported filter operator '{filter.Operator}' for field '{filter.Field}'.");
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(op) || !fieldDefinition.SupportedOperators.Contains(op, StringComparer.OrdinalIgnoreCase))
-        {
-            errors.Add($"Unsupported filter operator '{op}' for field '{field}'.");
-            filter = default!;
-            return false;
-        }
-
-        filter = new TableFilterClause(field, op, value);
         return true;
     }
 
-    private static IEnumerable<TableSortClause> ParseSortClauses(IQueryCollection query, IReadOnlyDictionary<string, TableQueryField> fields, ICollection<string> errors)
+    private static bool ValidateSort(TableSortClause sort, IReadOnlyDictionary<string, TableQueryField> fields, ICollection<string> errors)
     {
-        foreach (var index in GetClauseIndexes(query, "sort"))
+        if (string.IsNullOrWhiteSpace(sort.Field) || !fields.TryGetValue(sort.Field, out var fieldDefinition) || !fieldDefinition.IsSortable)
         {
-            if (TryParseSortClause(query, index, fields, errors, out var sort))
-            {
-                yield return sort;
-            }
-        }
-    }
-
-    private static bool TryParseSortClause(IQueryCollection query, int index, IReadOnlyDictionary<string, TableQueryField> fields, ICollection<string> errors, out TableSortClause sort)
-    {
-        var field = query[$"sort.{index}.field"].FirstOrDefault();
-        var direction = query[$"sort.{index}.dir"].FirstOrDefault();
-
-        if (string.IsNullOrWhiteSpace(field) && string.IsNullOrWhiteSpace(direction))
-        {
-            sort = default!;
+            errors.Add($"Unsupported sort field '{sort.Field}'.");
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(field) || !fields.TryGetValue(field, out var fieldDefinition) || !fieldDefinition.IsSortable)
-        {
-            errors.Add($"Unsupported sort field '{field}'.");
-            sort = default!;
-            return false;
-        }
-
-        if (!string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(direction, "desc", StringComparison.OrdinalIgnoreCase))
-        {
-            errors.Add($"Unsupported sort direction '{direction}'.");
-            sort = default!;
-            return false;
-        }
-
-        sort = new TableSortClause(field, direction!);
         return true;
     }
-
-    private static IEnumerable<int> GetClauseIndexes(IQueryCollection query, string prefix)
-        => query.Keys
-            .Where(key => key.StartsWith(prefix + ".", StringComparison.OrdinalIgnoreCase))
-            .Select(key => key.Split('.', StringSplitOptions.RemoveEmptyEntries))
-            .Where(parts => parts.Length >= 3)
-            .Select(parts => int.TryParse(parts[1], out var index) ? index : -1)
-            .Where(index => index >= 0)
-            .Distinct()
-            .OrderBy(index => index);
-
-    private static int ReadNonNegativeInt(HttpRequest request, string key, int fallback, ICollection<string> errors)
-    {
-        var rawValue = request.Query[key].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(rawValue))
-        {
-            return fallback;
-        }
-
-        if (int.TryParse(rawValue, out var parsed) && parsed >= 0)
-        {
-            return parsed;
-        }
-
-        errors.Add($"Unsupported {key} value '{rawValue}'.");
-        return fallback;
-    }
-
-    private static int ReadPositiveInt(HttpRequest request, string key, int fallback, ICollection<string> errors)
-    {
-        var rawValue = request.Query[key].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(rawValue))
-        {
-            return fallback;
-        }
-
-        if (int.TryParse(rawValue, out var parsed) && parsed > 0)
-        {
-            return parsed;
-        }
-
-        errors.Add($"Unsupported {key} value '{rawValue}'.");
-        return fallback;
-    }
-
-    private sealed record BoundTableQuery(TableQuery Query, IReadOnlyList<string> Errors);
 
     private sealed class RequestRowCache
     {
@@ -521,7 +426,7 @@ public static class EfUiApplicationBuilderExtensions
 
     private static RenderedListView BuildRenderedListView(string routePrefix, DbContext dbContext, EntityMetadata metadata, HttpRequest request, RequestRowCache rowCache, IReadOnlyList<string>? warnings = null)
     {
-        var queryResult = BindTableQuery(request, metadata);
+        var queryResult = PrepareTableQuery(request, metadata);
         var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata, rowCache);
         var rows = ApplyTableQuery(rowCache.GetRows(dbContext, metadata.ClrType), metadata, queryResult.Query, relatedValueLookups);
         return new RenderedListView(
