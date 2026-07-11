@@ -1,3 +1,5 @@
+using EfUi.Core.Orchestration;
+
 namespace EfUi.AspNetCore;
 
 public sealed class EfUiOptions
@@ -15,4 +17,9 @@ public sealed class EfUiOptions
     public string EditRoleName { get; set; } = "Edit";
 
     public string? AntiforgeryKeyDirectory { get; set; }
+
+    /// <summary>
+    /// Optional application flow module. When omitted, EF UI creates its default orchestrator once per mount.
+    /// </summary>
+    public IEfUiFlowOrchestrator? FlowOrchestrator { get; set; }
 }
