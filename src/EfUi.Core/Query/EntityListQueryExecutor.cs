@@ -1,7 +1,5 @@
-using System.Collections;
 using System.Globalization;
 using System.Linq.Expressions;
-using System.Reflection;
 using EfUi.Core.Metadata;
 using EfUi.Core.Rendering;
 using Microsoft.EntityFrameworkCore;
@@ -28,7 +26,7 @@ internal sealed class EntityListQueryExecutor
     {
         _validator = validator ?? throw new ArgumentNullException(nameof(validator));
         _expressionBuilder = expressionBuilder ?? throw new ArgumentNullException(nameof(expressionBuilder));
-        _materializeAsync = materializeAsync ?? ToListAsync;
+        _materializeAsync = materializeAsync ?? EfQueryReflection.ToListAsync;
         _relatedLabelEnricher = new RelatedLabelEnricher();
     }
 
@@ -63,7 +61,7 @@ internal sealed class EntityListQueryExecutor
         }
 
         var properties = metadata.AllProperties.ToDictionary(property => property.Name, StringComparer.Ordinal);
-        var source = GetEntitySet(dbContext, metadata.ClrType);
+        var source = EfQueryReflection.GetEntitySet(dbContext, metadata.ClrType);
         var queryable = source;
 
         foreach (var filter in validation.AppliedFilters)
@@ -183,16 +181,6 @@ internal sealed class EntityListQueryExecutor
             limit: query.Limit);
     }
 
-    private static IQueryable GetEntitySet(DbContext dbContext, Type entityType)
-    {
-        var method = typeof(DbContext)
-            .GetMethods(BindingFlags.Public | BindingFlags.Instance)
-            .Single(method => method.Name == nameof(DbContext.Set)
-                && method.IsGenericMethodDefinition
-                && method.GetParameters().Length == 0);
-        return (IQueryable)method.MakeGenericMethod(entityType).Invoke(dbContext, null)!;
-    }
-
     private static IQueryable ApplyWhere(IQueryable source, Type entityType, LambdaExpression predicate)
         => source.Provider.CreateQuery(Expression.Call(
             typeof(Queryable),
@@ -222,20 +210,6 @@ internal sealed class EntityListQueryExecutor
             [entityType],
             source.Expression,
             Expression.Constant(amount)));
-
-    private static async Task<List<object>> ToListAsync(IQueryable source, Type entityType, CancellationToken cancellationToken)
-    {
-        var method = typeof(EntityFrameworkQueryableExtensions)
-            .GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Single(method => method.Name == nameof(EntityFrameworkQueryableExtensions.ToListAsync)
-                && method.IsGenericMethodDefinition
-                && method.GetParameters().Length == 2
-                && method.GetParameters()[1].ParameterType == typeof(CancellationToken));
-        var task = (Task)method.MakeGenericMethod(entityType).Invoke(null, [source, cancellationToken])!;
-        await task.ConfigureAwait(false);
-        var value = task.GetType().GetProperty("Result")!.GetValue(task)!;
-        return ((IEnumerable)value).Cast<object>().ToList();
-    }
 
     private static EntityListQueryRow ProjectRow(object entity, EntityMetadata metadata)
     {

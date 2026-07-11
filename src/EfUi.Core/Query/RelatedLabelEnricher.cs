@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -112,7 +111,7 @@ internal sealed class RelatedLabelEnricher
         IReadOnlyList<object> keys,
         CancellationToken cancellationToken)
     {
-        var relatedSet = GetEntitySet(dbContext, principalEntityType.ClrType);
+        var relatedSet = EfQueryReflection.GetEntitySet(dbContext, principalEntityType.ClrType);
         var parameter = Expression.Parameter(principalEntityType.ClrType, "related");
         var keyMember = Expression.Property(parameter, principalKey.PropertyInfo!);
         var keyArray = Array.CreateInstance(principalKey.ClrType, keys.Count);
@@ -134,17 +133,7 @@ internal sealed class RelatedLabelEnricher
             [principalEntityType.ClrType],
             relatedSet.Expression,
             Expression.Quote(predicate)));
-        return await ToListAsync(query, principalEntityType.ClrType, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static IQueryable GetEntitySet(DbContext dbContext, Type entityType)
-    {
-        var method = typeof(DbContext)
-            .GetMethods(BindingFlags.Public | BindingFlags.Instance)
-            .Single(method => method.Name == nameof(DbContext.Set)
-                && method.IsGenericMethodDefinition
-                && method.GetParameters().Length == 0);
-        return (IQueryable)method.MakeGenericMethod(entityType).Invoke(dbContext, null)!;
+        return await EfQueryReflection.ToListAsync(query, principalEntityType.ClrType, cancellationToken).ConfigureAwait(false);
     }
 
     private static void ApplyFallbacks(
@@ -203,20 +192,6 @@ internal sealed class RelatedLabelEnricher
             IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
             _ => value.ToString()
         };
-
-    private static async Task<List<object>> ToListAsync(IQueryable source, Type entityType, CancellationToken cancellationToken)
-    {
-        var method = typeof(EntityFrameworkQueryableExtensions)
-            .GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Single(method => method.Name == nameof(EntityFrameworkQueryableExtensions.ToListAsync)
-                && method.IsGenericMethodDefinition
-                && method.GetParameters().Length == 2
-                && method.GetParameters()[1].ParameterType == typeof(CancellationToken));
-        var task = (Task)method.MakeGenericMethod(entityType).Invoke(null, [source, cancellationToken])!;
-        await task.ConfigureAwait(false);
-        var value = task.GetType().GetProperty("Result")!.GetValue(task)!;
-        return ((IEnumerable)value).Cast<object>().ToList();
-    }
 
     private sealed record RelatedLabelContext(
         EntityPropertyMetadata Property,

@@ -13,13 +13,7 @@ internal sealed class ProviderQueryExpressionBuilder
     private readonly ScalarValueBinder _valueBinder = new();
 
     public ProviderQueryExpressionBuildResult BuildFilter(
-        Type entityType,
-        EntityPropertyMetadata property,
-        TableFilterClause clause)
-        => BuildFilter(null, entityType, property, clause);
-
-    public ProviderQueryExpressionBuildResult BuildFilter(
-        DbContext? dbContext,
+        DbContext dbContext,
         Type entityType,
         EntityPropertyMetadata property,
         TableFilterClause clause)
@@ -33,7 +27,7 @@ internal sealed class ProviderQueryExpressionBuilder
         Type valueType;
         if (property.RelatedClrType is not null)
         {
-            if (dbContext is null || !TryBuildRelatedDisplayExpression(dbContext, entityType, property, parameter, out member, out valueType))
+            if (!TryBuildRelatedDisplayExpression(dbContext, entityType, property, parameter, out member, out valueType))
             {
                 return Failure("unsupported-related-query-field", $"Field '{clause.Field}' requires related-label query support.", clause.Field);
             }
@@ -93,13 +87,7 @@ internal sealed class ProviderQueryExpressionBuilder
     }
 
     public ProviderQueryExpressionBuildResult BuildSort(
-        Type entityType,
-        EntityPropertyMetadata property,
-        TableSortClause clause)
-        => BuildSort(null, entityType, property, clause);
-
-    public ProviderQueryExpressionBuildResult BuildSort(
-        DbContext? dbContext,
+        DbContext dbContext,
         Type entityType,
         EntityPropertyMetadata property,
         TableSortClause clause)
@@ -112,7 +100,7 @@ internal sealed class ProviderQueryExpressionBuilder
         Expression member;
         if (property.RelatedClrType is not null)
         {
-            if (dbContext is null || !TryBuildRelatedDisplayExpression(dbContext, entityType, property, parameter, out member, out _))
+            if (!TryBuildRelatedDisplayExpression(dbContext, entityType, property, parameter, out member, out _))
             {
                 return Failure("unsupported-related-query-field", $"Field '{clause.Field}' requires related-label query support.", clause.Field);
             }
@@ -169,7 +157,7 @@ internal sealed class ProviderQueryExpressionBuilder
             return true;
         }
 
-        var relatedSet = GetEntitySet(dbContext, foreignKey.PrincipalEntityType.ClrType);
+        var relatedSet = EfQueryReflection.GetEntitySet(dbContext, foreignKey.PrincipalEntityType.ClrType);
         var relatedParameter = Expression.Parameter(foreignKey.PrincipalEntityType.ClrType, "related");
         var relatedKey = Expression.Property(relatedParameter, principalKeyProperty);
         var foreignKeyProperty = entityType.GetProperty(property.Name);
@@ -203,16 +191,6 @@ internal sealed class ProviderQueryExpressionBuilder
             [displayProperty.ClrType],
             selected);
         return true;
-    }
-
-    private static IQueryable GetEntitySet(DbContext dbContext, Type entityType)
-    {
-        var method = typeof(DbContext)
-            .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
-            .Single(method => method.Name == nameof(DbContext.Set)
-                && method.IsGenericMethodDefinition
-                && method.GetParameters().Length == 0);
-        return (IQueryable)method.MakeGenericMethod(entityType).Invoke(dbContext, null)!;
     }
 
     private static BinaryExpression BuildEqualityExpression(Expression left, Expression right)
