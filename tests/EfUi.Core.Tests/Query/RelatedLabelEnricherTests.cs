@@ -16,7 +16,7 @@ public sealed class RelatedLabelEnricherTests
     [Fact]
     public async Task Applies_related_labels_and_queries_only_keys_in_the_returned_page()
     {
-        await using var interceptor = new CommandRecorder();
+        var interceptor = new CommandRecorder();
         await using var db = await CreateDbAsync(interceptor);
         db.Groups.AddRange(
             Enumerable.Range(1, 100).Select(id => new Group { Id = id, Name = $"Group {id}" }));
@@ -38,13 +38,13 @@ public sealed class RelatedLabelEnricherTests
         result.Rows[0].Cells["GroupId"].RawValue.Should().Be("2");
         result.Rows[0].Cells["GroupId"].DisplayText.Should().Be("Group 2");
         interceptor.Commands.Should().HaveCount(2);
-        var relatedCommand = interceptor.Commands[1];
+        var relatedCommand = interceptor.Commands.Single(command => command.CommandText.Contains("FROM \"Groups\"", StringComparison.OrdinalIgnoreCase));
         relatedCommand.CommandText.Should().Contain("WHERE");
         var relatedValues = relatedCommand.Parameters.Select(parameter => parameter.Value).ToList();
-        (relatedValues.Any(value => Equals(value, 2)) || relatedCommand.CommandText.Contains("2", StringComparison.Ordinal))
-            .Should().BeTrue();
-        relatedValues.Should().NotContain(value => Equals(value, 1) || Equals(value, 3));
+        relatedCommand.CommandText.Should().MatchRegex(@"(?<!\d)2(?!\d)");
         relatedCommand.CommandText.Should().NotMatchRegex(@"(?<!\d)[13](?!\d)");
+        relatedValues.Should().NotContain(1);
+        relatedValues.Should().NotContain(3);
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public sealed class RelatedLabelEnricherTests
     [Fact]
     public async Task List_reads_do_not_start_an_explicit_transaction()
     {
-        await using var recorder = new CommandRecorder();
+        var recorder = new CommandRecorder();
         await using var db = await CreateDbAsync(recorder);
         db.Groups.Add(new Group { Id = 1, Name = "Group" });
         db.Users.Add(new User { Id = 1, Name = "user", GroupId = 1 });
@@ -244,13 +244,11 @@ public sealed class RelatedLabelEnricherTests
     public async Task Cancellation_token_is_passed_to_related_label_materialization()
     {
         using var cancellation = new CancellationTokenSource();
-        await using var interceptor = new CancellationRecorder(cancellation.Token);
+        var interceptor = new CancellationRecorder(cancellation.Token);
         await using var db = await CreateDbAsync(interceptor);
         db.Groups.Add(new Group { Id = 1, Name = "Group" });
         db.Users.Add(new User { Id = 1, Name = "user", GroupId = 1 });
         await db.SaveChangesAsync();
-        interceptor.Reset();
-
         var metadata = new EfEntityMetadataProvider().GetEntity(db, "users");
         var action = () => new EntityListQueryExecutor().ExecuteAsync(
             db, metadata, new TableQuery([], [], Limit: 1), cancellation.Token);
@@ -259,7 +257,7 @@ public sealed class RelatedLabelEnricherTests
         interceptor.RelatedCancellationToken.Should().Be(cancellation.Token);
     }
 
-    private sealed class CommandRecorder : DbCommandInterceptor, IAsyncDisposable
+    private sealed class CommandRecorder : DbCommandInterceptor
     {
         private readonly List<RecordedCommand> _commands = [];
 
@@ -284,24 +282,14 @@ public sealed class RelatedLabelEnricherTests
             _commands.Add(new RecordedCommand(
                 command.CommandText,
                 command.Parameters.Cast<DbParameter>()
-                    .Select(parameter => new CapturedParameter(parameter.ParameterName, parameter.Value))
+                    .Select(parameter => new CapturedParameter(parameter.Value))
                     .ToList()));
         }
-
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    private sealed class CancellationRecorder(CancellationToken expectedToken) : DbCommandInterceptor, IAsyncDisposable
+    private sealed class CancellationRecorder(CancellationToken expectedToken) : DbCommandInterceptor
     {
-        private int _commandCount;
-
         public CancellationToken? RelatedCancellationToken { get; private set; }
-
-        public void Reset()
-        {
-            _commandCount = 0;
-            RelatedCancellationToken = null;
-        }
 
         public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
             DbCommand command,
@@ -309,24 +297,16 @@ public sealed class RelatedLabelEnricherTests
             InterceptionResult<DbDataReader> result,
             CancellationToken cancellationToken = default)
         {
-            if (!command.CommandText.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+            if (!command.CommandText.Contains("FROM \"Groups\"", StringComparison.OrdinalIgnoreCase))
             {
                 return ValueTask.FromResult(result);
             }
 
-            _commandCount++;
-            if (_commandCount == 2)
-            {
-                RelatedCancellationToken = cancellationToken;
-                throw new OperationCanceledException(expectedToken);
-            }
-
-            return ValueTask.FromResult(result);
+            RelatedCancellationToken = cancellationToken;
+            throw new OperationCanceledException(expectedToken);
         }
-
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private sealed record RecordedCommand(string CommandText, IReadOnlyList<CapturedParameter> Parameters);
-    private sealed record CapturedParameter(string Name, object? Value);
+    private sealed record CapturedParameter(object? Value);
 }

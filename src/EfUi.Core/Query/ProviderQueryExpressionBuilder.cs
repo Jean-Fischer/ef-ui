@@ -131,10 +131,11 @@ internal sealed class ProviderQueryExpressionBuilder
             .Where(candidate => candidate.Properties.Count == 1)
             .SingleOrDefault(candidate => candidate.Properties[0].Name == property.Name);
         var principalKey = foreignKey?.PrincipalEntityType.FindPrimaryKey()?.Properties.SingleOrDefault();
+        var principalKeyProperty = principalKey?.PropertyInfo;
         var displayProperty = foreignKey?.PrincipalEntityType.FindProperty(property.RelatedDisplayPropertyName!);
         if (foreignKey is null
             || principalKey is null
-            || principalKey.PropertyInfo is null
+            || principalKeyProperty is null
             || displayProperty is null
             || displayProperty.PropertyInfo is null)
         {
@@ -152,7 +153,7 @@ internal sealed class ProviderQueryExpressionBuilder
 
         var relatedSet = GetEntitySet(dbContext, foreignKey.PrincipalEntityType.ClrType);
         var relatedParameter = Expression.Parameter(foreignKey.PrincipalEntityType.ClrType, "related");
-        var relatedKey = Expression.Property(relatedParameter, principalKey.PropertyInfo);
+        var relatedKey = Expression.Property(relatedParameter, principalKeyProperty);
         var foreignKeyProperty = entityType.GetProperty(property.Name);
         if (foreignKeyProperty is null)
         {
