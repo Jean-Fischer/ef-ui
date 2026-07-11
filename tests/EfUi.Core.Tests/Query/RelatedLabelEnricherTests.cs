@@ -40,11 +40,12 @@ public sealed class RelatedLabelEnricherTests
         interceptor.Commands.Should().HaveCount(2);
         var relatedCommand = interceptor.Commands.Single(command => command.CommandText.Contains("FROM \"Groups\"", StringComparison.OrdinalIgnoreCase));
         relatedCommand.CommandText.Should().Contain("WHERE");
-        var relatedValues = relatedCommand.Parameters.Select(parameter => parameter.Value).ToList();
-        relatedCommand.CommandText.Should().MatchRegex(@"(?<!\d)2(?!\d)");
-        relatedCommand.CommandText.Should().NotMatchRegex(@"(?<!\d)[13](?!\d)");
-        relatedValues.Should().NotContain(1);
-        relatedValues.Should().NotContain(3);
+        var relatedQueryText = string.Join(
+            Environment.NewLine,
+            new[] { relatedCommand.CommandText }
+                .Concat(relatedCommand.Parameters.Select(parameter => parameter.Value?.ToString() ?? string.Empty)));
+        relatedQueryText.Should().MatchRegex(@"(?<!\d)2(?!\d)");
+        relatedQueryText.Should().NotMatchRegex(@"(?<!\d)[13](?!\d)");
     }
 
     [Fact]
@@ -58,7 +59,8 @@ public sealed class RelatedLabelEnricherTests
         db.ScalarUsers.AddRange(
             new ScalarUser { Id = 1, GroupId = 1 },
             new ScalarUser { Id = 2, GroupId = 2 },
-            new ScalarUser { Id = 3, GroupId = 3 });
+            new ScalarUser { Id = 3, GroupId = 3 },
+            new ScalarUser { Id = 4 });
         await db.SaveChangesAsync();
 
         var metadata = new EfEntityMetadataProvider().GetEntities(db).Single(entity => entity.ClrType == typeof(ScalarUser));
@@ -74,6 +76,27 @@ public sealed class RelatedLabelEnricherTests
         result.Errors.Should().BeEmpty();
         result.Rows.Select(row => row.Key).Should().Equal("1");
         result.Rows.Select(row => row.Cells["GroupId"].DisplayText).Should().Equal("Beta");
+    }
+
+    [Fact]
+    public async Task Null_scalar_foreign_keys_do_not_throw_or_match_related_labels()
+    {
+        await using var db = await CreateDbAsync();
+        db.ScalarGroups.Add(new ScalarGroup { Id = 1, Name = "Alpha" });
+        db.ScalarUsers.AddRange(
+            new ScalarUser { Id = 1, GroupId = 1 },
+            new ScalarUser { Id = 2 });
+        await db.SaveChangesAsync();
+
+        var metadata = new EfEntityMetadataProvider().GetEntities(db).Single(entity => entity.ClrType == typeof(ScalarUser));
+        var result = await new EntityListQueryExecutor().ExecuteAsync(
+            db,
+            metadata,
+            new TableQuery([new TableFilterClause("GroupId", "contains", "a")], []));
+
+        result.Errors.Should().BeEmpty();
+        result.Rows.Select(row => row.Key).Should().Equal("1");
+        result.Rows[0].Cells["GroupId"].DisplayText.Should().Be("Alpha");
     }
 
     [Fact]

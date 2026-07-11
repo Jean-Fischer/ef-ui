@@ -161,9 +161,8 @@ internal sealed class ProviderQueryExpressionBuilder
         }
 
         var foreignKeyValue = Expression.Property(parameter, foreignKeyProperty);
-        var comparableForeignKey = ConvertForEquality(foreignKeyValue, relatedKey.Type);
         var keyPredicate = Expression.Lambda(
-            Expression.Equal(relatedKey, comparableForeignKey),
+            BuildEqualityExpression(relatedKey, foreignKeyValue),
             relatedParameter);
         var filtered = Expression.Call(
             typeof(Queryable),
@@ -198,19 +197,24 @@ internal sealed class ProviderQueryExpressionBuilder
         return (IQueryable)method.MakeGenericMethod(entityType).Invoke(dbContext, null)!;
     }
 
-    private static Expression ConvertForEquality(Expression value, Type targetType)
+    private static BinaryExpression BuildEqualityExpression(Expression left, Expression right)
     {
-        if (value.Type == targetType)
+        if (left.Type == right.Type)
         {
-            return value;
+            return Expression.Equal(left, right);
         }
 
-        if (Nullable.GetUnderlyingType(value.Type) == targetType)
+        if (Nullable.GetUnderlyingType(right.Type) == left.Type)
         {
-            return Expression.Property(value, nameof(Nullable<int>.Value));
+            return Expression.Equal(Expression.Convert(left, right.Type), right);
         }
 
-        return Expression.Convert(value, targetType);
+        if (Nullable.GetUnderlyingType(left.Type) == right.Type)
+        {
+            return Expression.Equal(left, Expression.Convert(right, left.Type));
+        }
+
+        return Expression.Equal(Expression.Convert(left, right.Type), right);
     }
 
     private static Expression CreateTypedConstant(object? value, Type targetType)
