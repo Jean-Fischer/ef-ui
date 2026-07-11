@@ -432,12 +432,19 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     {
         var readmePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../README.md"));
         var readme = File.ReadAllText(readmePath);
+        var packageReadmePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/EfUi.AspNetCore/README.md"));
+        var packageReadme = File.ReadAllText(packageReadmePath);
 
         readme.Should().Contain("CRUD pages over your EF Core entities");
         readme.Should().Contain("relationship-aware forms and list pages");
         readme.Should().Contain("server-rendered fallback with enhanced table browsing");
         readme.Should().Contain("provider-backed filtering, sorting, and result-window paging");
         readme.Should().Contain("relational EF Core behavior for supported database providers");
+        packageReadme.Should().Contain("deterministic ascending primary-key ordering");
+        packageReadme.Should().Contain("configured database provider’s collation");
+        packageReadme.Should().Contain("Mapped scalar display properties can be used for provider-backed filtering and sorting");
+        packageReadme.Should().Contain("Computed CLR display properties remain available for rendering");
+        packageReadme.Should().Contain("total-count field");
         readme.Should().Contain("RoutePrefix");
         readme.Should().Contain("RequireAuthorization = true");
         readme.Should().Contain("EnableInProduction = true");
