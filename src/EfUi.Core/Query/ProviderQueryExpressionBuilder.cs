@@ -31,7 +31,7 @@ internal sealed class ProviderQueryExpressionBuilder
         var parameter = Expression.Parameter(entityType, "entity");
         Expression member;
         Type valueType;
-        if (property.RelatedDisplayPropertyName is not null)
+        if (property.RelatedClrType is not null)
         {
             if (dbContext is null || !TryBuildRelatedDisplayExpression(dbContext, entityType, property, parameter, out member, out valueType))
             {
@@ -69,9 +69,25 @@ internal sealed class ProviderQueryExpressionBuilder
         }
 
         var constant = CreateTypedConstant(binding.Value, valueType);
-        Expression body = string.Equals(clause.Operator, "contains", StringComparison.OrdinalIgnoreCase)
-            ? Expression.Call(member, nameof(string.Contains), Type.EmptyTypes, constant)
-            : Expression.Equal(member, constant);
+        var isEquality = string.Equals(clause.Operator, "eq", StringComparison.OrdinalIgnoreCase);
+        Expression body = isEquality
+            ? Expression.Equal(member, constant)
+            : Expression.Call(member, nameof(string.Contains), Type.EmptyTypes, constant);
+
+        if (isEquality && property.RelatedClrType is not null)
+        {
+            var rawProperty = entityType.GetProperty(property.Name);
+            if (rawProperty is not null)
+            {
+                var rawBinding = _valueBinder.Bind(rawProperty.PropertyType, clause.Value);
+                if (rawBinding.IsSuccess)
+                {
+                    var rawMember = Expression.Property(parameter, rawProperty);
+                    var rawConstant = CreateTypedConstant(rawBinding.Value, rawProperty.PropertyType);
+                    body = Expression.OrElse(body, Expression.Equal(rawMember, rawConstant));
+                }
+            }
+        }
 
         return new ProviderQueryExpressionBuildResult(Expression.Lambda(body, parameter), null);
     }
@@ -94,7 +110,7 @@ internal sealed class ProviderQueryExpressionBuilder
 
         var parameter = Expression.Parameter(entityType, "entity");
         Expression member;
-        if (property.RelatedDisplayPropertyName is not null)
+        if (property.RelatedClrType is not null)
         {
             if (dbContext is null || !TryBuildRelatedDisplayExpression(dbContext, entityType, property, parameter, out member, out _))
             {
@@ -132,7 +148,9 @@ internal sealed class ProviderQueryExpressionBuilder
             .SingleOrDefault(candidate => candidate.Properties[0].Name == property.Name);
         var principalKey = foreignKey?.PrincipalEntityType.FindPrimaryKey()?.Properties.SingleOrDefault();
         var principalKeyProperty = principalKey?.PropertyInfo;
-        var displayProperty = foreignKey?.PrincipalEntityType.FindProperty(property.RelatedDisplayPropertyName!);
+        var displayProperty = foreignKey is null || dependentEntityType is null
+            ? null
+            : RelatedQueryPropertyResolver.Find(dependentEntityType, property);
         if (foreignKey is null
             || principalKey is null
             || principalKeyProperty is null

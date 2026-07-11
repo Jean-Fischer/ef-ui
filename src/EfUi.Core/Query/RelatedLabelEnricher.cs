@@ -32,7 +32,8 @@ internal sealed class RelatedLabelEnricher
             return new(enrichedRows, errors);
         }
 
-        foreach (var property in metadata.AllProperties.Where(property => property.RelatedDisplayPropertyName is not null))
+        var contexts = new List<RelatedLabelContext>();
+        foreach (var property in metadata.AllProperties.Where(property => property.RelatedClrType is not null))
         {
             var foreignKey = dependentEntityType.GetForeignKeys()
                 .Where(candidate => candidate.Properties.Count == 1)
@@ -40,54 +41,69 @@ internal sealed class RelatedLabelEnricher
             var principalKey = foreignKey?.PrincipalEntityType.FindPrimaryKey()?.Properties.SingleOrDefault();
             if (foreignKey is null || principalKey is null || principalKey.PropertyInfo is null)
             {
-                errors.Add(new EntityListQueryError(
-                    "unsupported-related-query-field",
-                    $"Field '{property.Name}' requires a supported single-column related key.",
-                    property.Name));
+                errors.Add(CreateUnsupportedError(property.Name, "requires a supported single-column related key."));
                 continue;
             }
 
             var foreignKeyProperty = metadata.ClrType.GetProperty(property.Name);
-            var displayProperty = foreignKey.PrincipalEntityType.FindProperty(property.RelatedDisplayPropertyName!);
-            var displayClrProperty = foreignKey.PrincipalEntityType.ClrType.GetProperty(property.RelatedDisplayPropertyName!);
+            var displayProperty = RelatedQueryPropertyResolver.Find(dependentEntityType, property);
+            var displayClrProperty = string.IsNullOrWhiteSpace(property.RelatedDisplayPropertyName)
+                ? null
+                : foreignKey.PrincipalEntityType.ClrType.GetProperty(property.RelatedDisplayPropertyName);
             if (foreignKeyProperty is null || (displayProperty is null && displayClrProperty is null))
             {
-                errors.Add(new EntityListQueryError(
-                    "unsupported-related-query-field",
-                    $"Field '{property.Name}' requires a mapped related relationship.",
-                    property.Name));
+                errors.Add(CreateUnsupportedError(property.Name, "requires a mapped related relationship."));
                 continue;
             }
 
-            var keyValues = entities
-                .Select(entity => foreignKeyProperty.GetValue(entity))
-                .Where(value => value is not null)
-                .Select(value => ConvertKey(value!, principalKey.ClrType))
+            contexts.Add(new RelatedLabelContext(
+                property,
+                foreignKeyProperty,
+                foreignKey.PrincipalEntityType,
+                principalKey));
+        }
+
+        foreach (var contextGroup in contexts.GroupBy(context =>
+                     (context.PrincipalEntityType.ClrType, context.PrincipalKey.Name)))
+        {
+            var firstContext = contextGroup.First();
+            var keyValues = contextGroup
+                .SelectMany(context => entities
+                    .Select(entity => context.ForeignKeyProperty.GetValue(entity))
+                    .Where(value => value is not null)
+                    .Select(value => ConvertKey(value!, firstContext.PrincipalKey.ClrType)))
                 .Distinct()
                 .ToList();
-            if (keyValues.Count == 0)
-            {
-                ApplyFallbacks(enrichedRows, entities, foreignKeyProperty, property.Name, new Dictionary<object, string?>());
-                continue;
-            }
 
-            var relatedRows = await QueryRelatedRowsAsync(
-                dbContext,
-                foreignKey.PrincipalEntityType,
-                principalKey,
-                keyValues,
-                cancellationToken).ConfigureAwait(false);
-            var labels = relatedRows.ToDictionary(
-                related => principalKey.PropertyInfo!.GetValue(related)!,
-                related => (string?)EntityDisplayLabelResolver.Resolve(
-                    related,
-                    property.RelatedDisplayPropertyName,
-                    principalKey.Name));
-            ApplyFallbacks(enrichedRows, entities, foreignKeyProperty, property.Name, labels);
+            var relatedRows = keyValues.Count == 0
+                ? []
+                : await QueryRelatedRowsAsync(
+                    dbContext,
+                    firstContext.PrincipalEntityType,
+                    firstContext.PrincipalKey,
+                    keyValues,
+                    cancellationToken).ConfigureAwait(false);
+
+            foreach (var context in contextGroup)
+            {
+                var labels = relatedRows.ToDictionary(
+                    related => context.PrincipalKey.PropertyInfo!.GetValue(related)!,
+                    related => (string?)EntityDisplayLabelResolver.Resolve(
+                        related,
+                        context.Property.RelatedDisplayPropertyName,
+                        context.PrincipalKey.Name));
+                ApplyFallbacks(enrichedRows, entities, context.ForeignKeyProperty, context.Property.Name, labels);
+            }
         }
 
         return new(enrichedRows, errors);
     }
+
+    private static EntityListQueryError CreateUnsupportedError(string fieldName, string reason)
+        => new(
+            "unsupported-related-query-field",
+            $"Field '{fieldName}' {reason}",
+            fieldName);
 
     private static async Task<List<object>> QueryRelatedRowsAsync(
         DbContext dbContext,
@@ -141,14 +157,20 @@ internal sealed class RelatedLabelEnricher
         for (var index = 0; index < entities.Count && index < rows.Count; index++)
         {
             var rawValue = foreignKeyProperty.GetValue(entities[index]);
+            string? relatedLabel = null;
+            var hasRelatedLabel = rawValue is not null && labels.TryGetValue(rawValue, out relatedLabel);
             var label = rawValue is null
                 ? string.Empty
-                : labels.TryGetValue(rawValue, out var relatedLabel)
+                : hasRelatedLabel
                     ? relatedLabel ?? string.Empty
                     : Format(rawValue) ?? string.Empty;
             var cell = rows[index].Cells[fieldName];
             var cells = rows[index].Cells.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
-            cells[fieldName] = cell with { DisplayText = label };
+            cells[fieldName] = cell with
+            {
+                DisplayText = label,
+                RelatedRouteName = hasRelatedLabel ? cell.RelatedRouteName : null
+            };
             rows[index] = rows[index] with { Cells = cells };
         }
     }
@@ -195,6 +217,12 @@ internal sealed class RelatedLabelEnricher
         var value = task.GetType().GetProperty("Result")!.GetValue(task)!;
         return ((IEnumerable)value).Cast<object>().ToList();
     }
+
+    private sealed record RelatedLabelContext(
+        EntityPropertyMetadata Property,
+        PropertyInfo ForeignKeyProperty,
+        IEntityType PrincipalEntityType,
+        IProperty PrincipalKey);
 }
 
 internal sealed record RelatedLabelEnrichmentResult(

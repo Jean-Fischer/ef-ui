@@ -33,11 +33,19 @@ internal sealed class EntityListQueryCapabilities
         foreach (var property in metadata.AllProperties)
         {
             var mappedProperty = entityType?.FindProperty(property.Name);
-            var relatedDisplayProperty = FindRelatedDisplayProperty(property, entityType);
-            var isDisplayOnly = property.RelatedDisplayPropertyName is not null
+            var relatedDisplayProperty = entityType is null
+                ? null
+                : RelatedQueryPropertyResolver.Find(entityType, property);
+            var isRelatedProperty = entityType?.GetForeignKeys()
+                .Any(foreignKey => foreignKey.Properties.Count == 1 && foreignKey.Properties[0].Name == property.Name)
+                == true;
+            var isDisplayOnly = isRelatedProperty
+                && property.RelatedDisplayPropertyName is not null
                 && relatedDisplayProperty is null;
             var effectiveType = relatedDisplayProperty?.ClrType ?? mappedProperty?.ClrType ?? property.ClrType;
-            var queryable = mappedProperty is not null && !isDisplayOnly;
+            var queryable = mappedProperty is not null
+                && (!isRelatedProperty || relatedDisplayProperty is not null)
+                && !isDisplayOnly;
             IReadOnlyList<string> operators = queryable ? GetSupportedOperators(effectiveType) : [];
 
             fields[property.Name] = new EntityListQueryFieldCapabilities(
@@ -50,24 +58,6 @@ internal sealed class EntityListQueryCapabilities
         }
 
         return new EntityListQueryCapabilities(fields);
-    }
-
-    private static IProperty? FindRelatedDisplayProperty(EntityPropertyMetadata property, IEntityType? dependentEntityType)
-    {
-        if (property.RelatedDisplayPropertyName is null || dependentEntityType is null)
-        {
-            return null;
-        }
-
-        var foreignKey = dependentEntityType.GetForeignKeys()
-            .Where(foreignKey => foreignKey.Properties.Count == 1)
-            .SingleOrDefault(foreignKey => foreignKey.Properties[0].Name == property.Name);
-        if (foreignKey is null)
-        {
-            return null;
-        }
-
-        return foreignKey.PrincipalEntityType.FindProperty(property.RelatedDisplayPropertyName);
     }
 
     private static IReadOnlyList<string> GetSupportedOperators(Type type)
