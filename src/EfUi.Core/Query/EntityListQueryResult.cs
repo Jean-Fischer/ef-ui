@@ -2,18 +2,31 @@ using EfUi.Core.Rendering;
 
 namespace EfUi.Core.Query;
 
-public sealed record EntityListQueryResult(
-    IReadOnlyList<EntityListQueryRow> rows,
-    IReadOnlyList<TableFilterClause>? appliedFilters = null,
-    IReadOnlyList<TableSortClause>? appliedSorts = null,
-    IReadOnlyList<EntityListQueryError>? errors = null,
-    IReadOnlyList<string>? warnings = null,
-    int Offset = 0,
-    int Limit = 50)
+public sealed record EntityListQueryResult
 {
-    public IReadOnlyList<EntityListQueryRow> Rows { get; init; } = rows;
-    public IReadOnlyList<TableFilterClause> AppliedFilters { get; init; } = appliedFilters ?? [];
-    public IReadOnlyList<TableSortClause> AppliedSorts { get; init; } = appliedSorts ?? [];
-    public IReadOnlyList<EntityListQueryError> Errors { get; init; } = errors ?? [];
-    public IReadOnlyList<string> Warnings { get; init; } = warnings ?? [];
+    public EntityListQueryResult(
+        IReadOnlyList<EntityListQueryRow> rows,
+        IReadOnlyList<TableFilterClause>? appliedFilters = null,
+        IReadOnlyList<TableSortClause>? appliedSorts = null,
+        IReadOnlyList<EntityListQueryError>? errors = null,
+        IReadOnlyList<string>? warnings = null,
+        int Offset = 0,
+        int Limit = 50)
+    {
+        Rows = rows;
+        AppliedFilters = appliedFilters ?? [];
+        AppliedSorts = appliedSorts ?? [];
+        Errors = errors ?? [];
+        Warnings = warnings ?? [];
+        this.Offset = Offset;
+        this.Limit = Limit;
+    }
+
+    public IReadOnlyList<EntityListQueryRow> Rows { get; init; }
+    public IReadOnlyList<TableFilterClause> AppliedFilters { get; init; }
+    public IReadOnlyList<TableSortClause> AppliedSorts { get; init; }
+    public IReadOnlyList<EntityListQueryError> Errors { get; init; }
+    public IReadOnlyList<string> Warnings { get; init; }
+    public int Offset { get; init; }
+    public int Limit { get; init; }
 }

@@ -40,6 +40,25 @@ public class EntityListQueryResultTests
     }
 
     [Fact]
+    public void Result_exposes_only_pascal_case_data_properties()
+    {
+        var propertyNames = typeof(EntityListQueryResult)
+            .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Select(property => property.Name)
+            .Order()
+            .ToArray();
+
+        propertyNames.Should().Equal(
+            "AppliedFilters",
+            "AppliedSorts",
+            "Errors",
+            "Limit",
+            "Offset",
+            "Rows",
+            "Warnings");
+    }
+
+    [Fact]
     public void Result_defaults_optional_collections_and_supports_query_scoped_errors_without_total_count()
     {
         var result = new EntityListQueryResult(
