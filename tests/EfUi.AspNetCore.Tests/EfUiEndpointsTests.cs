@@ -408,6 +408,26 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Html_and_json_list_paths_share_the_same_provider_filtered_window()
+    {
+        var includedEmail = $"shared-window-include-{Guid.NewGuid():N}@example.com";
+        var excludedEmail = $"shared-window-exclude-{Guid.NewGuid():N}@example.com";
+        await CreateUserAndGetIdAsync("Shared Window Included", includedEmail);
+        await CreateUserAndGetIdAsync("Shared Window Excluded", excludedEmail);
+
+        const string query = "filter.0.field=Name&filter.0.op=contains&filter.0.value=Shared%20Window%20Included&limit=1";
+        var html = await _client.GetStringAsync($"/simple/users?{query}");
+        using var response = await _client.GetAsync($"/simple/users/data?{query}");
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        html.Should().Contain(includedEmail);
+        html.Should().NotContain(excludedEmail);
+        payload.RootElement.GetProperty("rows").EnumerateArray().Should().ContainSingle();
+        payload.RootElement.GetProperty("rows")[0].GetProperty("Email").GetProperty("text").GetString().Should().Be(includedEmail);
+        payload.RootElement.GetProperty("query").GetProperty("filters").EnumerateArray().Should().ContainSingle();
+    }
+
+    [Fact]
     public void Readme_describes_simple_and_chinook_breadcrumb_and_column_filter_list_behavior()
     {
         var readmePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../README.md"));
