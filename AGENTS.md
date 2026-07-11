@@ -58,3 +58,17 @@
 - The sample host routes include `/simple`, `/edge-cases`, and `/chinook`.
 - The package README describes `UseEfUi`, common options, and current limitations; prefer it over guessing behavior.
 - There was no pre-existing root `AGENTS.md`, `CLAUDE.md`, or `.pi/SYSTEM.md` when this file was written.
+
+## Agent skills
+
+### Issue tracker
+
+Issues for this repository live in GitHub Issues and are managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default canonical triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository using root `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md`.
