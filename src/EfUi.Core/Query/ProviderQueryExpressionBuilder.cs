@@ -85,19 +85,15 @@ internal sealed class ProviderQueryExpressionBuilder
 
     private static Expression CreateTypedConstant(object? value, Type targetType)
     {
-        if (value is null)
-        {
-            return Expression.Constant(null, targetType);
-        }
+        var holderType = typeof(TypedValue<>).MakeGenericType(targetType);
+        var holder = Activator.CreateInstance(holderType)!;
+        holderType.GetProperty(nameof(TypedValue<int>.Value))!.SetValue(holder, value);
+        return Expression.Property(Expression.Constant(holder, holderType), nameof(TypedValue<int>.Value));
+    }
 
-        if (targetType.IsInstanceOfType(value))
-        {
-            return Expression.Constant(value, targetType);
-        }
-
-        var actualType = Nullable.GetUnderlyingType(targetType) ?? targetType;
-        var constant = Expression.Constant(value, actualType);
-        return Expression.Convert(constant, targetType);
+    private sealed class TypedValue<T>
+    {
+        public T? Value { get; set; }
     }
 
     private static ProviderQueryExpressionBuildResult Failure(string code, string message, string? field)

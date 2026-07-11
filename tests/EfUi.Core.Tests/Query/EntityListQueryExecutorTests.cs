@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.Common;
 using EfUi.Core.Metadata;
 using EfUi.Core.Query;
@@ -39,6 +40,68 @@ public sealed class EntityListQueryExecutorTests
         interceptor.Commands.Should().ContainSingle();
         interceptor.Commands[0].Should().Contain("WHERE");
         interceptor.Commands[0].Should().MatchRegex("(?i)(LIMIT|OFFSET)");
+    }
+
+    [Fact]
+    public async Task Executes_direct_non_nullable_int_equality_with_a_typed_provider_parameter()
+    {
+        await using var interceptor = new RecordingCommandInterceptor();
+        await using var db = await CreateDbAsync(interceptor);
+        db.ProviderRecords.AddRange(
+            Record(1, "match", 1, true, ProviderRole.Viewer, new DateTime(2026, 1, 1)),
+            Record(2, "other", 2, true, ProviderRole.Viewer, new DateTime(2026, 1, 2)));
+        await db.SaveChangesAsync();
+        interceptor.Reset();
+
+        var result = await ExecuteAsync(db, new TableQuery([new("Id", "eq", "1")], []));
+
+        result.Errors.Should().BeEmpty();
+        result.Rows.Select(row => row.Key).Should().Equal("1");
+        interceptor.Parameters.Should().Contain(parameter =>
+            parameter.DbType == DbType.Int32
+            && parameter.Value != null
+            && parameter.Value.GetType() == typeof(int)
+            && Equals(parameter.Value, 1));
+    }
+
+    [Fact]
+    public async Task String_contains_uses_the_observed_sqlite_provider_collation()
+    {
+        await using var db = await CreateDbAsync();
+        db.ProviderRecords.AddRange(
+            Record(1, "prefix-match-suffix", 1, true, ProviderRole.Viewer, new DateTime(2026, 1, 1)),
+            Record(2, "prefix-MATCH-suffix", 1, true, ProviderRole.Viewer, new DateTime(2026, 1, 2)));
+        await db.SaveChangesAsync();
+
+        var result = await ExecuteAsync(db, new TableQuery([new("Name", "contains", "match")], []));
+
+        result.Errors.Should().BeEmpty();
+        result.Rows.Select(row => row.Key).Should().Equal("1");
+    }
+
+    [Fact]
+    public async Task Provider_translation_failures_return_empty_structured_results_without_retrying()
+    {
+        await using var db = await CreateDbAsync();
+        db.ProviderRecords.Add(Record(1, "provider-row", 1, true, ProviderRole.Viewer, new DateTime(2026, 1, 1)));
+        await db.SaveChangesAsync();
+
+        var materializationCalls = 0;
+        var executor = new EntityListQueryExecutor(
+            new EntityListQueryValidator(),
+            new ProviderQueryExpressionBuilder(),
+            (_, _, _) =>
+            {
+                materializationCalls++;
+                return Task.FromException<List<object>>(
+                    new InvalidOperationException("The LINQ expression could not be translated."));
+            });
+
+        var result = await ExecuteAsync(db, new TableQuery([new("Id", "eq", "1")], []), executor: executor);
+
+        result.Errors.Should().ContainSingle(error => error.Code == "provider-translation-failure");
+        result.Rows.Should().BeEmpty();
+        materializationCalls.Should().Be(1);
     }
 
     [Fact]
@@ -159,10 +222,14 @@ public sealed class EntityListQueryExecutorTests
     private static ProviderRecord Record(int id, string name, int? nullableNumber, bool active, ProviderRole role, DateTime createdAt)
         => new() { Id = id, Name = name, NullableNumber = nullableNumber, IsActive = active, Role = role, ExternalId = Guid.NewGuid(), CreatedAt = createdAt };
 
-    private static async Task<EntityListQueryResult> ExecuteAsync(SampleModelDbContext db, TableQuery query, CancellationToken cancellationToken = default)
+    private static async Task<EntityListQueryResult> ExecuteAsync(
+        SampleModelDbContext db,
+        TableQuery query,
+        CancellationToken cancellationToken = default,
+        EntityListQueryExecutor? executor = null)
     {
         var metadata = new EfEntityMetadataProvider().GetEntity(db, "provider_records");
-        return await new EntityListQueryExecutor().ExecuteAsync(db, metadata, query, cancellationToken);
+        return await (executor ?? new EntityListQueryExecutor()).ExecuteAsync(db, metadata, query, cancellationToken);
     }
 
     private static async Task<SampleModelDbContext> CreateDbAsync(RecordingCommandInterceptor? interceptor = null)
@@ -183,21 +250,36 @@ public sealed class EntityListQueryExecutorTests
     private sealed class RecordingCommandInterceptor : DbCommandInterceptor, IAsyncDisposable
     {
         private readonly List<string> _commands = [];
+        private readonly List<CapturedParameter> _parameters = [];
         public IReadOnlyList<string> Commands => _commands;
-        public void Reset() => _commands.Clear();
+        public IReadOnlyList<CapturedParameter> Parameters => _parameters;
+        public void Reset()
+        {
+            _commands.Clear();
+            _parameters.Clear();
+        }
 
         public override InterceptionResult<DbDataReader> ReaderExecuting(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result)
         {
-            _commands.Add(command.CommandText);
+            Capture(command);
             return result;
         }
 
         public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
         {
-            _commands.Add(command.CommandText);
+            Capture(command);
             return ValueTask.FromResult(result);
+        }
+
+        private void Capture(DbCommand command)
+        {
+            _commands.Add(command.CommandText);
+            _parameters.AddRange(command.Parameters.Cast<DbParameter>().Select(parameter =>
+                new CapturedParameter(parameter.ParameterName, parameter.DbType, parameter.Value)));
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
+
+    private sealed record CapturedParameter(string Name, DbType DbType, object? Value);
 }

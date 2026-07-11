@@ -13,6 +13,7 @@ internal sealed class EntityListQueryExecutor
 {
     private readonly EntityListQueryValidator _validator;
     private readonly ProviderQueryExpressionBuilder _expressionBuilder;
+    private readonly Func<IQueryable, Type, CancellationToken, Task<List<object>>> _materializeAsync;
 
     public EntityListQueryExecutor()
         : this(new EntityListQueryValidator(), new ProviderQueryExpressionBuilder())
@@ -21,10 +22,12 @@ internal sealed class EntityListQueryExecutor
 
     internal EntityListQueryExecutor(
         EntityListQueryValidator validator,
-        ProviderQueryExpressionBuilder expressionBuilder)
+        ProviderQueryExpressionBuilder expressionBuilder,
+        Func<IQueryable, Type, CancellationToken, Task<List<object>>>? materializeAsync = null)
     {
         _validator = validator ?? throw new ArgumentNullException(nameof(validator));
         _expressionBuilder = expressionBuilder ?? throw new ArgumentNullException(nameof(expressionBuilder));
+        _materializeAsync = materializeAsync ?? ToListAsync;
     }
 
     public async Task<EntityListQueryResult> ExecuteAsync(
@@ -137,7 +140,7 @@ internal sealed class EntityListQueryExecutor
         List<object> entities;
         try
         {
-            entities = await ToListAsync(queryable, metadata.ClrType, cancellationToken).ConfigureAwait(false);
+            entities = await _materializeAsync(queryable, metadata.ClrType, cancellationToken).ConfigureAwait(false);
         }
         catch (InvalidOperationException exception) when (IsProviderTranslationFailure(exception))
         {
