@@ -41,6 +41,13 @@ public sealed class TableQueryRequestParserTests
     }
 
     [Fact]
+    public void Parser_types_are_internal_implementation_details()
+    {
+        typeof(TableQueryRequestParser).IsPublic.Should().BeFalse();
+        typeof(TableQueryRequestParseResult).IsPublic.Should().BeFalse();
+    }
+
+    [Fact]
     public void Parse_uses_defaults_when_offset_and_limit_are_missing()
     {
         var result = TableQueryRequestParser.Parse(new QueryCollection());
@@ -48,6 +55,34 @@ public sealed class TableQueryRequestParserTests
         result.Query.Offset.Should().Be(0);
         result.Query.Limit.Should().Be(50);
         result.Errors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Parse_preserves_unknown_sort_field_with_valid_direction_for_core_validation()
+    {
+        var result = TableQueryRequestParser.Parse(new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["sort.0.field"] = "NotAVisibleField",
+            ["sort.0.dir"] = "asc"
+        }));
+
+        result.Errors.Should().BeEmpty();
+        result.Query.Sorts.Should().ContainSingle().Which.Should().Be(
+            new TableSortClause("NotAVisibleField", "asc"));
+    }
+
+    [Fact]
+    public void Parse_reads_non_default_offset_and_limit()
+    {
+        var result = TableQueryRequestParser.Parse(new QueryCollection(new Dictionary<string, StringValues>
+        {
+            ["offset"] = "25",
+            ["limit"] = "10"
+        }));
+
+        result.Errors.Should().BeEmpty();
+        result.Query.Offset.Should().Be(25);
+        result.Query.Limit.Should().Be(10);
     }
 
     [Theory]

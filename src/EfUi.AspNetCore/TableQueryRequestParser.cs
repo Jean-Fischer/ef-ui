@@ -1,10 +1,11 @@
 using EfUi.Core.Rendering;
 using Microsoft.AspNetCore.Http;
+
 namespace EfUi.AspNetCore;
 
-public sealed record TableQueryRequestParseResult(TableQuery Query, IReadOnlyList<string> Errors);
+internal sealed record TableQueryRequestParseResult(TableQuery Query, IReadOnlyList<string> Errors);
 
-public static class TableQueryRequestParser
+internal static class TableQueryRequestParser
 {
     public static TableQueryRequestParseResult Parse(HttpRequest request)
         => Parse(request.Query);
