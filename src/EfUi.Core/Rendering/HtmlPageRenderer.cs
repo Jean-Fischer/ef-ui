@@ -200,6 +200,9 @@ public sealed class HtmlPageRenderer : IHtmlPageRenderer
         html.Append("</script></section>");
     }
 
+    string IHtmlPageRenderer.RenderErrorPage(string routePrefix, string title, IReadOnlyList<string> messages)
+        => RenderErrorPage(routePrefix, title, messages);
+
     public static string RenderErrorPage(string routePrefix, string title, IReadOnlyList<string> messages)
     {
         var html = new StringBuilder();

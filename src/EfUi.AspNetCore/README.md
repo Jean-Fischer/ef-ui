@@ -40,6 +40,7 @@ app.Run();
 - `EnableInProduction = true` to allow the UI outside Development
 - `ReadOnlyRoleName` / `EditRoleName` if your app uses different role names
 - `AntiforgeryKeyDirectory` to override where EF UI stores its Data Protection key ring for write-form tokens
+- `FlowOrchestrator` to provide an advanced application-flow adapter for composition and integration testing
 
 ## What you get
 
