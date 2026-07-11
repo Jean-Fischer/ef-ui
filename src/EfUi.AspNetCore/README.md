@@ -46,6 +46,8 @@ app.Run();
 - CRUD pages over your EF Core entities
 - relationship-aware forms and list pages
 - server-rendered fallback with enhanced table browsing
+- provider-backed filtering, sorting, and result-window paging
+- deterministic ascending primary-key ordering for unsorted lists, with primary-key tie-breaking after user sorts
 - local, package-owned Tabulator assets for the enhanced list shell
 - relational EF Core behavior for supported database providers
 
@@ -68,7 +70,7 @@ public partial class Employee
 }
 ```
 
-If no attribute is present, EF UI falls back to `Name`, `Title`, `Email`, then the primary key.
+If no attribute is present, EF UI falls back to `Name`, `Title`, `Email`, then the primary key. Mapped scalar display properties can be used for provider-backed list filtering and sorting. Computed CLR display properties still render, but are display-only for list queries until an explicit provider expression or mapped computed column is supplied.
 
 ## Notes
 
@@ -86,4 +88,9 @@ If no attribute is present, EF UI falls back to `Name`, `Title`, `Email`, then t
 - Composite primary keys are not supported yet.
 - Composite foreign keys are not supported yet.
 - The editor currently supports common scalar CLR types such as `string`, numeric types, `bool`, `DateTime`, `Guid`, and enums. The renderer uses type-specific controls for the supported scalar set: checkbox/select variants for booleans, number inputs for numeric types, a text input with ISO-8601 subset validation for `DateTime`, and text/select fallbacks for the remaining supported scalars.
-- Very large tables are still rendered through in-memory row loading, so server-side query execution and pagination are not fully provider-driven yet.
+- List filtering, sorting, and paging execute through the registered EF provider. EF UI materializes the requested result window and only the related keys needed to display that window.
+- Unsorted lists use ascending primary-key order; user sorts use the primary key as a deterministic tie-breaker.
+- Text matching follows the configured database provider’s collation.
+- Mapped scalar display properties can be used for provider-backed filtering and sorting.
+- Computed CLR display properties remain available for rendering, but provider-backed filtering and sorting require a mapped scalar display property.
+- List responses do not include a total-count query or total-count field.

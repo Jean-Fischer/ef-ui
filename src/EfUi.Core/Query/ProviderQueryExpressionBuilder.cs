@@ -1,0 +1,235 @@
+using System.Linq.Expressions;
+using EfUi.Core.Binding;
+using EfUi.Core.Metadata;
+using EfUi.Core.Rendering;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
+
+namespace EfUi.Core.Query;
+
+/// <summary>Builds provider expressions over mapped scalar and supported one-hop related properties.</summary>
+internal sealed class ProviderQueryExpressionBuilder
+{
+    private readonly ScalarValueBinder _valueBinder = new();
+
+    public ProviderQueryExpressionBuildResult BuildFilter(
+        DbContext dbContext,
+        Type entityType,
+        EntityPropertyMetadata property,
+        TableFilterClause clause)
+    {
+        ArgumentNullException.ThrowIfNull(entityType);
+        ArgumentNullException.ThrowIfNull(property);
+        ArgumentNullException.ThrowIfNull(clause);
+
+        var parameter = Expression.Parameter(entityType, "entity");
+        Expression member;
+        Type valueType;
+        if (property.RelatedClrType is not null)
+        {
+            if (!TryBuildRelatedDisplayExpression(dbContext, entityType, property, parameter, out member, out valueType))
+            {
+                return Failure("unsupported-related-query-field", $"Field '{clause.Field}' requires related-label query support.", clause.Field);
+            }
+        }
+        else
+        {
+            var propertyInfo = entityType.GetProperty(property.Name);
+            if (propertyInfo is null)
+            {
+                return Failure("unsupported-filter-field", $"Property '{property.Name}' is not mapped on '{entityType.Name}'.", clause.Field);
+            }
+
+            member = Expression.Property(parameter, propertyInfo);
+            valueType = propertyInfo.PropertyType;
+        }
+
+        if (!string.Equals(clause.Operator, "eq", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(clause.Operator, "contains", StringComparison.OrdinalIgnoreCase))
+        {
+            return Failure("unsupported-filter-operator", $"Unsupported filter operator '{clause.Operator}' for field '{clause.Field}'.", clause.Field);
+        }
+
+        if (string.Equals(clause.Operator, "contains", StringComparison.OrdinalIgnoreCase)
+            && valueType != typeof(string))
+        {
+            return Failure("unsupported-filter-operator", $"Operator 'contains' is only supported for string field '{clause.Field}'.", clause.Field);
+        }
+
+        var binding = _valueBinder.Bind(valueType, clause.Value);
+        if (!binding.IsSuccess)
+        {
+            return Failure("invalid-filter-value", binding.Error ?? $"Invalid value for field '{clause.Field}'.", clause.Field);
+        }
+
+        var constant = CreateTypedConstant(binding.Value, valueType);
+        var isEquality = string.Equals(clause.Operator, "eq", StringComparison.OrdinalIgnoreCase);
+        Expression body = isEquality
+            ? Expression.Equal(member, constant)
+            : Expression.Call(member, nameof(string.Contains), Type.EmptyTypes, constant);
+
+        if (isEquality && property.RelatedClrType is not null)
+        {
+            var rawProperty = entityType.GetProperty(property.Name);
+            if (rawProperty is not null)
+            {
+                var rawBinding = _valueBinder.Bind(rawProperty.PropertyType, clause.Value);
+                if (rawBinding.IsSuccess)
+                {
+                    var rawMember = Expression.Property(parameter, rawProperty);
+                    var rawConstant = CreateTypedConstant(rawBinding.Value, rawProperty.PropertyType);
+                    body = Expression.OrElse(body, Expression.Equal(rawMember, rawConstant));
+                }
+            }
+        }
+
+        return new ProviderQueryExpressionBuildResult(Expression.Lambda(body, parameter), null);
+    }
+
+    public ProviderQueryExpressionBuildResult BuildSort(
+        DbContext dbContext,
+        Type entityType,
+        EntityPropertyMetadata property,
+        TableSortClause clause)
+    {
+        ArgumentNullException.ThrowIfNull(entityType);
+        ArgumentNullException.ThrowIfNull(property);
+        ArgumentNullException.ThrowIfNull(clause);
+
+        var parameter = Expression.Parameter(entityType, "entity");
+        Expression member;
+        if (property.RelatedClrType is not null)
+        {
+            if (!TryBuildRelatedDisplayExpression(dbContext, entityType, property, parameter, out member, out _))
+            {
+                return Failure("unsupported-related-query-field", $"Field '{clause.Field}' requires related-label query support.", clause.Field);
+            }
+        }
+        else
+        {
+            var propertyInfo = entityType.GetProperty(property.Name);
+            if (propertyInfo is null)
+            {
+                return Failure("unsupported-sort-field", $"Property '{property.Name}' is not mapped on '{entityType.Name}'.", clause.Field);
+            }
+
+            member = Expression.Property(parameter, propertyInfo);
+        }
+
+        return new ProviderQueryExpressionBuildResult(Expression.Lambda(member, parameter), null);
+    }
+
+    private static bool TryBuildRelatedDisplayExpression(
+        DbContext dbContext,
+        Type entityType,
+        EntityPropertyMetadata property,
+        ParameterExpression parameter,
+        out Expression expression,
+        out Type valueType)
+    {
+        expression = null!;
+        valueType = null!;
+
+        var dependentEntityType = dbContext.Model.FindEntityType(entityType);
+        var foreignKey = dependentEntityType?.GetForeignKeys()
+            .Where(candidate => candidate.Properties.Count == 1)
+            .SingleOrDefault(candidate => candidate.Properties[0].Name == property.Name);
+        var principalKey = foreignKey?.PrincipalEntityType.FindPrimaryKey()?.Properties.SingleOrDefault();
+        var principalKeyProperty = principalKey?.PropertyInfo;
+        var displayProperty = foreignKey is null || dependentEntityType is null
+            ? null
+            : RelatedQueryPropertyResolver.Find(dependentEntityType, property);
+        if (foreignKey is null
+            || principalKey is null
+            || principalKeyProperty is null
+            || displayProperty is null
+            || displayProperty.PropertyInfo is null)
+        {
+            return false;
+        }
+
+        valueType = displayProperty.ClrType;
+        var navigationInfo = foreignKey.DependentToPrincipal?.PropertyInfo;
+        if (navigationInfo is not null)
+        {
+            var navigation = Expression.Property(parameter, navigationInfo);
+            expression = Expression.Property(navigation, displayProperty.PropertyInfo);
+            return true;
+        }
+
+        var relatedSet = EfQueryReflection.GetEntitySet(dbContext, foreignKey.PrincipalEntityType.ClrType);
+        var relatedParameter = Expression.Parameter(foreignKey.PrincipalEntityType.ClrType, "related");
+        var relatedKey = Expression.Property(relatedParameter, principalKeyProperty);
+        var foreignKeyProperty = entityType.GetProperty(property.Name);
+        if (foreignKeyProperty is null)
+        {
+            return false;
+        }
+
+        var foreignKeyValue = Expression.Property(parameter, foreignKeyProperty);
+        var keyPredicate = Expression.Lambda(
+            BuildEqualityExpression(relatedKey, foreignKeyValue),
+            relatedParameter);
+        var filtered = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.Where),
+            [foreignKey.PrincipalEntityType.ClrType],
+            relatedSet.Expression,
+            Expression.Quote(keyPredicate));
+        var displaySelector = Expression.Lambda(
+            Expression.Property(relatedParameter, displayProperty.PropertyInfo),
+            relatedParameter);
+        var selected = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.Select),
+            [foreignKey.PrincipalEntityType.ClrType, displayProperty.ClrType],
+            filtered,
+            Expression.Quote(displaySelector));
+        expression = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.FirstOrDefault),
+            [displayProperty.ClrType],
+            selected);
+        return true;
+    }
+
+    private static BinaryExpression BuildEqualityExpression(Expression left, Expression right)
+    {
+        if (left.Type == right.Type)
+        {
+            return Expression.Equal(left, right);
+        }
+
+        if (Nullable.GetUnderlyingType(right.Type) == left.Type)
+        {
+            return Expression.Equal(Expression.Convert(left, right.Type), right);
+        }
+
+        if (Nullable.GetUnderlyingType(left.Type) == right.Type)
+        {
+            return Expression.Equal(left, Expression.Convert(right, left.Type));
+        }
+
+        return Expression.Equal(Expression.Convert(left, right.Type), right);
+    }
+
+    private static Expression CreateTypedConstant(object? value, Type targetType)
+    {
+        var holderType = typeof(TypedValue<>).MakeGenericType(targetType);
+        var holder = Activator.CreateInstance(holderType)!;
+        holderType.GetProperty(nameof(TypedValue<int>.Value))!.SetValue(holder, value);
+        return Expression.Property(Expression.Constant(holder, holderType), nameof(TypedValue<int>.Value));
+    }
+
+    private sealed class TypedValue<T>
+    {
+        public T? Value { get; set; }
+    }
+
+    private static ProviderQueryExpressionBuildResult Failure(string code, string message, string? field)
+        => new(null, new EntityListQueryError(code, message, field));
+}
+
+internal sealed record ProviderQueryExpressionBuildResult(
+    LambdaExpression? Expression,
+    EntityListQueryError? Error);

@@ -25,7 +25,7 @@ run_windows = [
 description = "Install the browser binaries required for Playwright tests"
 depends = ["build"]
 run = "bash tests/EfUi.AspNetCore.Tests/bin/Release/net8.0/playwright.sh install chromium"
-run_windows = "tests\\EfUi.AspNetCore.Tests\\bin\\Release\\net8.0\\playwright.cmd install chromium"
+run_windows = "pwsh -NoProfile -File tests\\EfUi.AspNetCore.Tests\\bin\\Release\\net8.0\\playwright.ps1 install chromium"
 
 [tasks.test-browser]
 description = "Run the Playwright browser coverage for the Chinook edit page"

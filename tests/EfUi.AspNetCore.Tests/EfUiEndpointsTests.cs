@@ -408,15 +408,43 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
     }
 
     [Fact]
+    public async Task Html_and_json_list_paths_share_the_same_provider_filtered_window()
+    {
+        var includedEmail = $"shared-window-include-{Guid.NewGuid():N}@example.com";
+        var excludedEmail = $"shared-window-exclude-{Guid.NewGuid():N}@example.com";
+        await CreateUserAndGetIdAsync("Shared Window Included", includedEmail);
+        await CreateUserAndGetIdAsync("Shared Window Excluded", excludedEmail);
+
+        const string query = "filter.0.field=Name&filter.0.op=contains&filter.0.value=Shared%20Window%20Included&limit=1";
+        var html = await _client.GetStringAsync($"/simple/users?{query}");
+        using var response = await _client.GetAsync($"/simple/users/data?{query}");
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        html.Should().Contain(includedEmail);
+        html.Should().NotContain(excludedEmail);
+        payload.RootElement.GetProperty("rows").EnumerateArray().Should().ContainSingle();
+        payload.RootElement.GetProperty("rows")[0].GetProperty("Email").GetProperty("text").GetString().Should().Be(includedEmail);
+        payload.RootElement.GetProperty("query").GetProperty("filters").EnumerateArray().Should().ContainSingle();
+    }
+
+    [Fact]
     public void Readme_describes_simple_and_chinook_breadcrumb_and_column_filter_list_behavior()
     {
         var readmePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../README.md"));
         var readme = File.ReadAllText(readmePath);
+        var packageReadmePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/EfUi.AspNetCore/README.md"));
+        var packageReadme = File.ReadAllText(packageReadmePath);
 
         readme.Should().Contain("CRUD pages over your EF Core entities");
         readme.Should().Contain("relationship-aware forms and list pages");
         readme.Should().Contain("server-rendered fallback with enhanced table browsing");
+        readme.Should().Contain("provider-backed filtering, sorting, and result-window paging");
         readme.Should().Contain("relational EF Core behavior for supported database providers");
+        packageReadme.Should().Contain("deterministic ascending primary-key ordering");
+        packageReadme.Should().Contain("configured database provider’s collation");
+        packageReadme.Should().Contain("Mapped scalar display properties can be used for provider-backed filtering and sorting");
+        packageReadme.Should().Contain("Computed CLR display properties remain available for rendering");
+        packageReadme.Should().Contain("total-count field");
         readme.Should().Contain("RoutePrefix");
         readme.Should().Contain("RequireAuthorization = true");
         readme.Should().Contain("EnableInProduction = true");
