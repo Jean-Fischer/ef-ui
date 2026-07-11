@@ -436,6 +436,7 @@ public class EfUiEndpointsTests : IClassFixture<EfUiApplicationFactory>
         readme.Should().Contain("CRUD pages over your EF Core entities");
         readme.Should().Contain("relationship-aware forms and list pages");
         readme.Should().Contain("server-rendered fallback with enhanced table browsing");
+        readme.Should().Contain("provider-backed filtering, sorting, and result-window paging");
         readme.Should().Contain("relational EF Core behavior for supported database providers");
         readme.Should().Contain("RoutePrefix");
         readme.Should().Contain("RequireAuthorization = true");
