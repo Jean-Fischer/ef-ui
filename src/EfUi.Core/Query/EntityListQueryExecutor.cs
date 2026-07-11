@@ -14,6 +14,7 @@ internal sealed class EntityListQueryExecutor
     private readonly EntityListQueryValidator _validator;
     private readonly ProviderQueryExpressionBuilder _expressionBuilder;
     private readonly Func<IQueryable, Type, CancellationToken, Task<List<object>>> _materializeAsync;
+    private readonly RelatedLabelEnricher _relatedLabelEnricher;
 
     public EntityListQueryExecutor()
         : this(new EntityListQueryValidator(), new ProviderQueryExpressionBuilder())
@@ -28,6 +29,7 @@ internal sealed class EntityListQueryExecutor
         _validator = validator ?? throw new ArgumentNullException(nameof(validator));
         _expressionBuilder = expressionBuilder ?? throw new ArgumentNullException(nameof(expressionBuilder));
         _materializeAsync = materializeAsync ?? ToListAsync;
+        _relatedLabelEnricher = new RelatedLabelEnricher();
     }
 
     public async Task<EntityListQueryResult> ExecuteAsync(
@@ -71,7 +73,7 @@ internal sealed class EntityListQueryExecutor
                 continue;
             }
 
-            var built = _expressionBuilder.BuildFilter(metadata.ClrType, property, filter);
+            var built = _expressionBuilder.BuildFilter(dbContext, metadata.ClrType, property, filter);
             if (built.Error is not null)
             {
                 errors.Add(built.Error);
@@ -90,7 +92,7 @@ internal sealed class EntityListQueryExecutor
                 continue;
             }
 
-            var built = _expressionBuilder.BuildSort(metadata.ClrType, property, sort);
+            var built = _expressionBuilder.BuildSort(dbContext, metadata.ClrType, property, sort);
             if (built.Error is not null)
             {
                 errors.Add(built.Error);
@@ -102,7 +104,7 @@ internal sealed class EntityListQueryExecutor
         }
 
         var keySort = new TableSortClause(metadata.PrimaryKeyProperty.Name, "asc");
-        var keyExpression = _expressionBuilder.BuildSort(metadata.ClrType, metadata.PrimaryKeyProperty, keySort);
+        var keyExpression = _expressionBuilder.BuildSort(dbContext, metadata.ClrType, metadata.PrimaryKeyProperty, keySort);
         if (keyExpression.Error is not null)
         {
             errors.Add(keyExpression.Error);
@@ -150,8 +152,30 @@ internal sealed class EntityListQueryExecutor
             return EmptyResult(query, appliedFilters, appliedSorts, errors);
         }
 
+        var projectedRows = entities.Select(entity => ProjectRow(entity, metadata)).ToList();
+        try
+        {
+            var enrichment = await _relatedLabelEnricher
+                .EnrichAsync(dbContext, entities, metadata, projectedRows, cancellationToken)
+                .ConfigureAwait(false);
+            if (enrichment.Errors.Count > 0)
+            {
+                errors.AddRange(enrichment.Errors);
+                return EmptyResult(query, appliedFilters, appliedSorts, errors);
+            }
+
+            projectedRows = enrichment.Rows.ToList();
+        }
+        catch (InvalidOperationException exception) when (IsProviderTranslationFailure(exception))
+        {
+            errors.Add(new EntityListQueryError(
+                "provider-translation-failure",
+                "The provider could not translate the requested list query."));
+            return EmptyResult(query, appliedFilters, appliedSorts, errors);
+        }
+
         return new EntityListQueryResult(
-            entities.Select(entity => ProjectRow(entity, metadata)).ToList(),
+            projectedRows,
             appliedFilters,
             appliedSorts,
             errors,
