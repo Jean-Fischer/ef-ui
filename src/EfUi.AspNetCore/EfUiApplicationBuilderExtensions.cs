@@ -5,6 +5,7 @@ using System.Text.Json;
 using EfUi.Core.Binding;
 using EfUi.Core.Crud;
 using EfUi.Core.Metadata;
+using EfUi.Core.Query;
 using EfUi.Core.Rendering;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -87,7 +88,7 @@ public static class EfUiApplicationBuilderExtensions
         return Results.Content(html, HtmlContentType);
     }
 
-    private static IResult RenderEntityList(EfUiOptions options, string entity, HttpRequest request, IServiceProvider services)
+    private static async Task<IResult> RenderEntityList(EfUiOptions options, string entity, HttpRequest request, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
         var discovery = DiscoverEntities(dbContext);
@@ -97,15 +98,19 @@ public static class EfUiApplicationBuilderExtensions
             return RenderMissingEntityResult(options.RoutePrefix, discovery, entity);
         }
 
-        var rowCache = new RequestRowCache();
-        var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request, rowCache, GetRenderableIssueMessages(discovery, entity));
+        var view = await BuildRenderedListView(
+            options.RoutePrefix,
+            dbContext,
+            metadata,
+            request,
+            GetRenderableIssueMessages(discovery, entity));
         var canMutate = CanMutate(options, request.HttpContext.User);
         var antiForgeryToken = canMutate ? EfUiRequestForgery.GetOrCreateRequestToken(request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory) : null;
         var html = new HtmlPageRenderer().RenderList(options.RoutePrefix, metadata, view, canMutate, antiForgeryToken);
         return Results.Content(html, HtmlContentType);
     }
 
-    private static IResult RenderEntityListData(EfUiOptions options, string entity, HttpRequest request, IServiceProvider services)
+    private static async Task<IResult> RenderEntityListData(EfUiOptions options, string entity, HttpRequest request, IServiceProvider services)
     {
         var dbContext = ResolveDbContext(services, options.DbContextType);
         var discovery = DiscoverEntities(dbContext);
@@ -115,8 +120,12 @@ public static class EfUiApplicationBuilderExtensions
             return Results.NotFound();
         }
 
-        var rowCache = new RequestRowCache();
-        var view = BuildRenderedListView(options.RoutePrefix, dbContext, metadata, request, rowCache, GetRenderableIssueMessages(discovery, entity));
+        var view = await BuildRenderedListView(
+            options.RoutePrefix,
+            dbContext,
+            metadata,
+            request,
+            GetRenderableIssueMessages(discovery, entity));
         var canMutate = CanMutate(options, request.HttpContext.User);
         var antiForgeryToken = canMutate ? EfUiRequestForgery.GetOrCreateRequestToken(request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory) : null;
         return Results.Text(JsonSerializer.Serialize(RenderedListPayloadFactory.Create(options.RoutePrefix, metadata, view, canMutate, antiForgeryToken)), "application/json");
@@ -271,15 +280,18 @@ public static class EfUiApplicationBuilderExtensions
             return Results.BadRequest(result.Errors);
         }
 
-        var rowCache = new RequestRowCache();
-        var rows = rowCache.GetRows(dbContext, metadata.ClrType);
-        var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata, rowCache);
+        var view = await BuildRenderedListView(
+            options.RoutePrefix,
+            dbContext,
+            metadata,
+            request,
+            GetRenderableIssueMessages(discovery, entity));
         var canMutate = CanMutate(options, request.HttpContext.User);
         var antiForgeryToken = canMutate ? EfUiRequestForgery.GetOrCreateRequestToken(request.HttpContext, options.RoutePrefix, options.AntiforgeryKeyDirectory) : null;
         var html = new HtmlPageRenderer().RenderList(
             options.RoutePrefix,
             metadata,
-            new RenderedListView(CreateRenderedListRows(options.RoutePrefix, metadata, rows, relatedValueLookups)),
+            view,
             canMutate,
             antiForgeryToken);
         return Results.Content(html, HtmlContentType);
@@ -359,52 +371,6 @@ public static class EfUiApplicationBuilderExtensions
             : Results.NotFound();
     }
 
-    private static TableQueryRequestParseResult PrepareTableQuery(HttpRequest request, EntityMetadata metadata)
-    {
-        var parsed = TableQueryRequestParser.Parse(request);
-        var fields = metadata.AllProperties
-            .Select(property => new TableQueryField(property.Name, IsFilterable: true, IsSortable: true))
-            .ToDictionary(field => field.Name, StringComparer.Ordinal);
-        var errors = parsed.Errors.ToList();
-        var filters = parsed.Query.Filters
-            .Where(filter => ValidateFilter(filter, fields, errors))
-            .ToList();
-        var sorts = parsed.Query.Sorts
-            .Where(sort => ValidateSort(sort, fields, errors))
-            .ToList();
-
-        return new TableQueryRequestParseResult(
-            new TableQuery(filters, sorts, parsed.Query.Offset, parsed.Query.Limit),
-            errors);
-    }
-
-    private static bool ValidateFilter(TableFilterClause filter, IReadOnlyDictionary<string, TableQueryField> fields, ICollection<string> errors)
-    {
-        if (string.IsNullOrWhiteSpace(filter.Field) || !fields.TryGetValue(filter.Field, out var fieldDefinition) || !fieldDefinition.IsFilterable)
-        {
-            errors.Add($"Unsupported filter field '{filter.Field}'.");
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(filter.Operator) || !fieldDefinition.SupportedOperators.Contains(filter.Operator, StringComparer.OrdinalIgnoreCase))
-        {
-            errors.Add($"Unsupported filter operator '{filter.Operator}' for field '{filter.Field}'.");
-            return false;
-        }
-
-        return true;
-    }
-
-    private static bool ValidateSort(TableSortClause sort, IReadOnlyDictionary<string, TableQueryField> fields, ICollection<string> errors)
-    {
-        if (string.IsNullOrWhiteSpace(sort.Field) || !fields.TryGetValue(sort.Field, out var fieldDefinition) || !fieldDefinition.IsSortable)
-        {
-            errors.Add($"Unsupported sort field '{sort.Field}'.");
-            return false;
-        }
-
-        return true;
-    }
 
     private sealed class RequestRowCache
     {
@@ -424,19 +390,20 @@ public static class EfUiApplicationBuilderExtensions
 
     private static readonly ConcurrentDictionary<Type, Func<DbContext, IReadOnlyList<object>>> ReadRowsAccessors = new();
 
-    private static RenderedListView BuildRenderedListView(string routePrefix, DbContext dbContext, EntityMetadata metadata, HttpRequest request, RequestRowCache rowCache, IReadOnlyList<string>? warnings = null)
+    private static async Task<RenderedListView> BuildRenderedListView(
+        string routePrefix,
+        DbContext dbContext,
+        EntityMetadata metadata,
+        HttpRequest request,
+        IReadOnlyList<string>? warnings = null)
     {
-        var queryResult = PrepareTableQuery(request, metadata);
-        var relatedValueLookups = BuildRelatedValueLookups(dbContext, metadata, rowCache);
-        var rows = ApplyTableQuery(rowCache.GetRows(dbContext, metadata.ClrType), metadata, queryResult.Query, relatedValueLookups);
-        return new RenderedListView(
-            CreateRenderedListRows(routePrefix, metadata, rows, relatedValueLookups),
-            queryResult.Query.Filters.Select(filter => new RenderedListFilter(filter.Field, filter.Operator, filter.Value)).ToList(),
-            queryResult.Query.Sorts.Select(sort => new RenderedListSort(sort.Field, sort.Direction)).ToList(),
-            queryResult.Errors,
-            queryResult.Query.Offset,
-            queryResult.Query.Limit,
-            warnings);
+        var parsed = TableQueryRequestParser.Parse(request);
+        var result = await new EntityListQueryExecutor().ExecuteAsync(
+            dbContext,
+            metadata,
+            parsed.Query,
+            request.HttpContext.RequestAborted);
+        return RenderedListViewAdapter.Create(routePrefix, metadata, result, parsed.Errors, warnings);
     }
 
     private static IReadOnlyList<object> ReadRows(DbContext dbContext, Type entityClrType)
@@ -453,139 +420,6 @@ public static class EfUiApplicationBuilderExtensions
     private static IReadOnlyList<object> ReadRowsCore<TEntity>(DbContext dbContext)
         where TEntity : class
         => dbContext.Set<TEntity>().Cast<object>().ToList();
-
-    private static IReadOnlyList<RenderedListRow> CreateRenderedListRows(string routePrefix, EntityMetadata metadata, IReadOnlyList<object> rows, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
-    {
-        return rows.Select(row => new RenderedListRow(
-            FormatValue(row.GetType().GetProperty(metadata.PrimaryKeyProperty.Name)?.GetValue(row)),
-            metadata.AllProperties.ToDictionary(
-                property => property.Name,
-                property => CreateRenderedListCell(routePrefix, row, property, relatedValueLookups)))).ToList();
-    }
-
-    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> BuildRelatedValueLookups(DbContext dbContext, EntityMetadata metadata, RequestRowCache rowCache)
-    {
-        var entityType = dbContext.Model.FindEntityType(metadata.ClrType);
-        if (entityType is null)
-        {
-            return new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
-        }
-
-        var visiblePropertyNames = metadata.AllProperties
-            .Select(property => property.Name)
-            .ToHashSet(StringComparer.Ordinal);
-        var lookups = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
-
-        foreach (var foreignKey in entityType.GetForeignKeys().Where(foreignKey => foreignKey.Properties.Count == 1))
-        {
-            var foreignKeyProperty = foreignKey.Properties[0];
-            if (!visiblePropertyNames.Contains(foreignKeyProperty.Name))
-            {
-                continue;
-            }
-
-            var relatedPrimaryKey = foreignKey.PrincipalEntityType.FindPrimaryKey()?.Properties.SingleOrDefault();
-            if (relatedPrimaryKey is null)
-            {
-                continue;
-            }
-
-            var relatedProperty = metadata.AllProperties.Single(property => property.Name == foreignKeyProperty.Name);
-            lookups[foreignKeyProperty.Name] = rowCache.GetRows(dbContext, foreignKey.PrincipalEntityType.ClrType)
-                .ToDictionary(
-                    row => FormatValue(row.GetType().GetProperty(relatedPrimaryKey.Name)?.GetValue(row)),
-                    row => GetRelatedEntityLabel(row, relatedPrimaryKey.Name, relatedProperty.RelatedDisplayPropertyName),
-                    StringComparer.Ordinal);
-        }
-
-        return lookups;
-    }
-
-    private static IReadOnlyList<object> ApplyTableQuery(IReadOnlyList<object> rows, EntityMetadata metadata, TableQuery query, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
-    {
-        IEnumerable<object> filteredRows = rows;
-
-        foreach (var filter in query.Filters)
-        {
-            var property = metadata.AllProperties.Single(candidate => candidate.Name == filter.Field);
-            filteredRows = filteredRows.Where(row => MatchesFilter(row, property, filter, relatedValueLookups));
-        }
-
-        IOrderedEnumerable<object>? orderedRows = null;
-        foreach (var sort in query.Sorts)
-        {
-            var property = metadata.AllProperties.Single(candidate => candidate.Name == sort.Field);
-            Func<object, object?> keySelector = row => GetSortKeyValue(row, property, relatedValueLookups);
-            var descending = string.Equals(sort.Direction, "desc", StringComparison.OrdinalIgnoreCase);
-
-            if (orderedRows is null)
-            {
-                orderedRows = descending
-                    ? filteredRows.OrderByDescending(keySelector, SortKeyComparer.Instance)
-                    : filteredRows.OrderBy(keySelector, SortKeyComparer.Instance);
-            }
-            else
-            {
-                orderedRows = descending
-                    ? orderedRows.ThenByDescending(keySelector, SortKeyComparer.Instance)
-                    : orderedRows.ThenBy(keySelector, SortKeyComparer.Instance);
-            }
-        }
-
-        return (orderedRows ?? filteredRows)
-            .Skip(query.Offset)
-            .Take(query.Limit)
-            .ToList();
-    }
-
-    private static bool MatchesFilter(object row, EntityPropertyMetadata property, TableFilterClause filter, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
-    {
-        var candidate = GetQueryDisplayValue(row, property, relatedValueLookups);
-        var rawValue = FormatValue(row.GetType().GetProperty(property.Name)?.GetValue(row));
-        var filterValue = filter.Value ?? string.Empty;
-
-        return filter.Operator.ToLowerInvariant() switch
-        {
-            "contains" => candidate.Contains(filterValue, StringComparison.OrdinalIgnoreCase),
-            "eq" => string.Equals(candidate, filterValue, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(rawValue, filterValue, StringComparison.OrdinalIgnoreCase),
-            _ => false
-        };
-    }
-
-    private static string GetQueryDisplayValue(object row, EntityPropertyMetadata property, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
-        => GetRenderedListCellValue(row, property.Name, relatedValueLookups);
-
-    private static object? GetSortKeyValue(object row, EntityPropertyMetadata property, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
-        => relatedValueLookups.ContainsKey(property.Name)
-            ? GetQueryDisplayValue(row, property, relatedValueLookups)
-            : row.GetType().GetProperty(property.Name)?.GetValue(row);
-
-    private static RenderedListCell CreateRenderedListCell(string routePrefix, object row, EntityPropertyMetadata property, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
-    {
-        var rawValue = row.GetType().GetProperty(property.Name)?.GetValue(row);
-        var formattedRawValue = FormatValue(rawValue);
-        var text = GetRenderedListCellValue(row, property.Name, relatedValueLookups);
-        var href = property.RelatedRouteName is not null
-                   && !string.IsNullOrWhiteSpace(formattedRawValue)
-                   && relatedValueLookups.TryGetValue(property.Name, out var lookup)
-                   && lookup.ContainsKey(formattedRawValue)
-            ? $"{routePrefix}/{property.RelatedRouteName}/{Uri.EscapeDataString(formattedRawValue)}/edit"
-            : null;
-
-        return new RenderedListCell(text, href);
-    }
-
-    private static string GetRenderedListCellValue(object row, string propertyName, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> relatedValueLookups)
-    {
-        var rawValue = row.GetType().GetProperty(propertyName)?.GetValue(row);
-        var formattedValue = FormatValue(rawValue);
-
-        return relatedValueLookups.TryGetValue(propertyName, out var lookup)
-               && lookup.TryGetValue(formattedValue, out var label)
-            ? label
-            : formattedValue;
-    }
 
     private static object? TryReadKey(DbContext dbContext, EntityMetadata metadata, string id)
     {
@@ -763,41 +597,6 @@ public static class EfUiApplicationBuilderExtensions
             DateTime dateTime => dateTime.ToString("O"),
             _ => value.ToString() ?? string.Empty
         };
-
-    private sealed class SortKeyComparer : IComparer<object?>
-    {
-        internal static SortKeyComparer Instance { get; } = new();
-
-        public int Compare(object? x, object? y)
-        {
-            if (ReferenceEquals(x, y))
-            {
-                return 0;
-            }
-
-            if (x is null)
-            {
-                return -1;
-            }
-
-            if (y is null)
-            {
-                return 1;
-            }
-
-            if (x is string leftString && y is string rightString)
-            {
-                return StringComparer.OrdinalIgnoreCase.Compare(leftString, rightString);
-            }
-
-            if (x is IComparable comparable && x.GetType() == y.GetType())
-            {
-                return comparable.CompareTo(y);
-            }
-
-            return StringComparer.OrdinalIgnoreCase.Compare(FormatValue(x), FormatValue(y));
-        }
-    }
 
     private static IReadOnlyDictionary<string, string[]> EnsureCollectionFieldsPresent(EntityMetadata metadata, Dictionary<string, string[]> submittedValues, bool isCreate)
     {
